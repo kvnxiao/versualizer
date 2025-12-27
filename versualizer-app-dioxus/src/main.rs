@@ -144,7 +144,7 @@ fn app() -> Element {
     let sync_engine: Arc<SyncEngine> = use_context();
 
     // Bridge SyncEngine events to Dioxus signals
-    use_sync_engine_bridge(sync_engine, karaoke);
+    use_sync_engine_bridge(&sync_engine, karaoke);
 
     rsx! { App {} }
 }

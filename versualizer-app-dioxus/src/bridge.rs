@@ -1,4 +1,4 @@
-use crate::state::KaraokeState;
+use crate::state::{KaraokeState, LocalPlaybackTimer};
 use dioxus::prelude::*;
 use std::sync::Arc;
 use tracing::info;
@@ -6,10 +6,24 @@ use versualizer_core::{DurationExt, SyncEngine, SyncEvent};
 
 const LOG_TARGET: &str = "versualizer::bridge";
 
-/// Bridge `SyncEngine` events to Dioxus signals.
-/// This function spawns an async task that listens to `SyncEngine` events
-/// and updates the karaoke state signals accordingly.
-pub fn use_sync_engine_bridge(sync_engine: Arc<SyncEngine>, karaoke: KaraokeState) {
+/// Bridge `SyncEngine` events to Dioxus signals, with local playback timing.
+///
+/// This combines two responsibilities:
+/// 1. Listens to `SyncEngine` events and updates the timer/karaoke state
+/// 2. Runs a local timer loop that derives `current_index` from interpolated position
+///
+/// The timer approach (inspired by dioxus-motion) reduces re-renders by:
+/// - Only hard-syncing on major events (play/pause/seek/track change)
+/// - Using drift correction (300ms threshold) for regular position updates
+/// - Locally computing line index at ~60fps instead of on every sync event
+pub fn use_sync_engine_bridge(sync_engine: &Arc<SyncEngine>, karaoke: KaraokeState) {
+    // Create the local playback timer
+    let timer = use_signal(LocalPlaybackTimer::new);
+
+    // Clone once for the closure, then move into async block
+    let sync_engine = sync_engine.clone();
+
+    // Spawn the sync event listener
     use_future(move || {
         let sync_engine = sync_engine.clone();
         async move {
@@ -18,7 +32,7 @@ pub fn use_sync_engine_bridge(sync_engine: Arc<SyncEngine>, karaoke: KaraokeStat
             loop {
                 match rx.recv().await {
                     Ok(event) => {
-                        handle_sync_event(event, karaoke);
+                        handle_sync_event(event, karaoke, timer);
                     }
                     Err(tokio::sync::broadcast::error::RecvError::Closed) => {
                         info!(target: LOG_TARGET, "Sync event channel closed");
@@ -31,12 +45,47 @@ pub fn use_sync_engine_bridge(sync_engine: Arc<SyncEngine>, karaoke: KaraokeStat
             }
         }
     });
+
+    // Spawn the local timer loop that updates current_index
+    use_effect(move || {
+        // Make karaoke mutable for the async block
+        let mut karaoke = karaoke;
+        spawn(async move {
+            loop {
+                // Only update when playing and we have lyrics
+                if timer.peek().is_playing() {
+                    if let Some(ref lyrics) = *karaoke.lyrics.peek() {
+                        // Compute current position from local timer
+                        let position_ms = timer.peek().interpolated_position_ms();
+
+                        // Derive line index from position
+                        let new_index = lyrics.line_index_at(position_ms);
+
+                        // Only update signal if line actually changed (reduces re-renders)
+                        if new_index != *karaoke.current_index.peek() {
+                            karaoke.current_index.set(new_index);
+                        }
+                    }
+
+                    // Active polling: ~60fps for smooth line transitions
+                    tokio::time::sleep(LocalPlaybackTimer::ACTIVE_POLL_INTERVAL).await;
+                } else {
+                    // Idle polling: reduced CPU usage when paused
+                    tokio::time::sleep(LocalPlaybackTimer::IDLE_POLL_INTERVAL).await;
+                }
+            }
+        });
+    });
 }
 
-fn handle_sync_event(event: SyncEvent, mut karaoke: KaraokeState) {
+fn handle_sync_event(
+    event: SyncEvent,
+    mut karaoke: KaraokeState,
+    mut timer: Signal<LocalPlaybackTimer>,
+) {
     match event {
+        // === Lyrics events ===
         SyncEvent::LyricsLoaded { lyrics } => {
-            // Precompute all lines with timing and store in state
             karaoke.set_lyrics(&lyrics);
             info!(
                 target: LOG_TARGET,
@@ -47,32 +96,43 @@ fn handle_sync_event(event: SyncEvent, mut karaoke: KaraokeState) {
         SyncEvent::LyricsNotFound => {
             karaoke.clear_lyrics();
         }
-        SyncEvent::PositionSync { position } => {
-            // Update reference position for drift correction
-            karaoke.sync_position(position.as_millis_u64());
-        }
-        SyncEvent::SeekOccurred { position } => {
-            // Seek requires immediate position update
-            karaoke.sync_position(position.as_millis_u64());
-        }
-        SyncEvent::PlaybackStarted { position, .. }
-        | SyncEvent::PlaybackResumed { position } => {
-            karaoke.sync_position(position.as_millis_u64());
+
+        // === Major events: hard sync position ===
+        SyncEvent::PlaybackStarted { position, .. } | SyncEvent::PlaybackResumed { position } => {
+            timer.write().hard_sync(position.as_millis_u64());
+            timer.write().set_playing(true);
             karaoke.set_playing(true);
         }
         SyncEvent::PlaybackPaused { position } => {
-            karaoke.sync_position(position.as_millis_u64());
+            timer.write().hard_sync(position.as_millis_u64());
+            timer.write().set_playing(false);
             karaoke.set_playing(false);
         }
+        SyncEvent::SeekOccurred { position } => {
+            // Seek is a major event: hard sync immediately
+            timer.write().hard_sync(position.as_millis_u64());
+        }
         SyncEvent::TrackChanged { .. } => {
-            // Clear lyrics until new ones load
+            // Clear lyrics and reset timer
             karaoke.clear_lyrics();
+            timer.write().hard_sync(0);
+            timer.write().set_playing(false);
             karaoke.set_playing(false);
         }
         SyncEvent::PlaybackStopped => {
             karaoke.clear_lyrics();
+            timer.write().hard_sync(0);
+            timer.write().set_playing(false);
             karaoke.set_playing(false);
         }
+
+        // === Drift correction: only sync if drift exceeds threshold ===
+        SyncEvent::PositionSync { position } => {
+            // drift_correct() only updates if drift > 300ms
+            timer.write().drift_correct(position.as_millis_u64());
+        }
+
+        // === Errors ===
         SyncEvent::Error { .. } => {
             // Errors are logged elsewhere
         }

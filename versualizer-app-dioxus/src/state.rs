@@ -1,5 +1,6 @@
 use dioxus::prelude::*;
-use std::time::Instant;
+use std::time::{Duration, Instant};
+use tracing::{debug, trace};
 use versualizer_core::LrcFile;
 
 /// UI display configuration for karaoke rendering.
@@ -140,20 +141,17 @@ impl PrecomputedLyrics {
 
 /// Karaoke display state with precomputed lyrics for efficient UI-driven animation.
 ///
-/// The UI receives all lyrics upfront and drives line transitions locally based on
-/// timing information. Position sync events only update the reference point for
-/// drift correction.
+/// The UI receives all lyrics upfront. Line transitions are driven by `LocalPlaybackTimer`
+/// which updates `current_index` based on locally interpolated playback position.
+/// This decouples UI updates from network sync events for smoother animation.
 #[derive(Clone, Copy)]
 pub struct KaraokeState {
     /// All precomputed lines for the current track
     pub lyrics: Signal<Option<PrecomputedLyrics>>,
     /// Current line index (-1 = intro/before first line, 0+ = actual line index)
+    /// Updated by the local playback timer loop, not directly by sync events
     pub current_index: Signal<i32>,
-    /// Reference position from last sync event (milliseconds)
-    pub reference_position_ms: Signal<u64>,
-    /// When we received the reference position (for local interpolation)
-    pub reference_instant: Signal<Option<Instant>>,
-    /// Whether playback is active
+    /// Whether playback is active (used by UI for animation state)
     pub is_playing: Signal<bool>,
 }
 
@@ -164,8 +162,6 @@ impl KaraokeState {
         Self {
             lyrics: Signal::new(None),
             current_index: Signal::new(INTRO_LINE_INDEX),
-            reference_position_ms: Signal::new(0),
-            reference_instant: Signal::new(None),
             is_playing: Signal::new(false),
         }
     }
@@ -174,40 +170,19 @@ impl KaraokeState {
     pub fn set_lyrics(&mut self, lrc: &LrcFile) {
         let precomputed = PrecomputedLyrics::from_lrc(lrc);
         self.lyrics.set(Some(precomputed));
-        // Reset position tracking - start at intro
+        // Reset to intro state - timer will update current_index
         self.current_index.set(INTRO_LINE_INDEX);
-        self.reference_position_ms.set(0);
-        self.reference_instant.set(None);
     }
 
     /// Clear lyrics (no lyrics available or track changed)
     pub fn clear_lyrics(&mut self) {
         self.lyrics.set(None);
         self.current_index.set(INTRO_LINE_INDEX);
-        self.reference_position_ms.set(0);
-        self.reference_instant.set(None);
-    }
-
-    /// Update the reference position (from sync events)
-    /// This also updates the current line index based on the position
-    pub fn sync_position(&mut self, position_ms: u64) {
-        self.reference_position_ms.set(position_ms);
-        self.reference_instant.set(Some(Instant::now()));
-
-        // Update current line index based on position
-        if let Some(ref lyrics) = *self.lyrics.read() {
-            let new_index = lyrics.line_index_at(position_ms);
-            self.current_index.set(new_index);
-        }
     }
 
     /// Set the playing state
     pub fn set_playing(&mut self, playing: bool) {
         self.is_playing.set(playing);
-        if playing {
-            // Reset the reference instant when resuming to avoid jump
-            self.reference_instant.set(Some(Instant::now()));
-        }
     }
 
     /// Get visible lines around the current position.
@@ -243,6 +218,133 @@ impl KaraokeState {
 }
 
 impl Default for KaraokeState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Local playback timer that tracks position independently between sync events.
+///
+/// Inspired by dioxus-motion's timing approach: maintains a reference point and
+/// interpolates position locally, only hard-syncing on major events (play/pause/seek)
+/// and using drift correction for regular position updates.
+#[derive(Clone, Debug)]
+pub struct LocalPlaybackTimer {
+    /// Position at the last sync point (milliseconds)
+    reference_position_ms: u64,
+    /// When we received the reference position
+    reference_instant: Instant,
+    /// Whether playback is currently active
+    is_playing: bool,
+}
+
+/// Log target for timer-related messages
+const TIMER_LOG_TARGET: &str = "versualizer::timer";
+
+impl LocalPlaybackTimer {
+    /// Drift threshold in milliseconds. If local and server positions differ by more
+    /// than this amount, we hard-sync. Otherwise, we trust our local timer.
+    /// 300ms tolerates ~2-3 poll intervals of cumulative drift while keeping lyrics
+    /// visually in sync (less than a syllable of error).
+    const DRIFT_THRESHOLD_MS: u64 = 300;
+
+    /// Polling interval when playback is active (targeting ~60fps for smooth updates)
+    pub const ACTIVE_POLL_INTERVAL: Duration = Duration::from_millis(16);
+
+    /// Polling interval when playback is idle (reduced CPU usage)
+    pub const IDLE_POLL_INTERVAL: Duration = Duration::from_millis(100);
+
+    /// Create a new timer starting at position 0, paused
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            reference_position_ms: 0,
+            reference_instant: Instant::now(),
+            is_playing: false,
+        }
+    }
+
+    /// Get the current interpolated position in milliseconds.
+    /// When playing, adds elapsed time since last sync to the reference position.
+    /// When paused, returns the reference position unchanged.
+    #[must_use]
+    pub fn interpolated_position_ms(&self) -> u64 {
+        if self.is_playing {
+            let elapsed_ms = self.reference_instant.elapsed().as_millis();
+            // Safe: song durations never exceed u64::MAX milliseconds
+            #[allow(clippy::cast_possible_truncation)]
+            let elapsed = elapsed_ms as u64;
+            self.reference_position_ms.saturating_add(elapsed)
+        } else {
+            self.reference_position_ms
+        }
+    }
+
+    /// Hard sync to a specific position. Used for major events like
+    /// play/pause/seek where we want to immediately match server state.
+    pub fn hard_sync(&mut self, position_ms: u64) {
+        self.reference_position_ms = position_ms;
+        self.reference_instant = Instant::now();
+    }
+
+    /// Apply drift correction if the server position differs significantly.
+    /// Only syncs if the drift exceeds `DRIFT_THRESHOLD_MS`, otherwise
+    /// trusts the local timer to avoid unnecessary jumps.
+    ///
+    /// Returns `true` if a correction was applied.
+    pub fn drift_correct(&mut self, server_position_ms: u64) -> bool {
+        let local = self.interpolated_position_ms();
+        let drift = server_position_ms.abs_diff(local);
+
+        // Determine drift direction for logging
+        let drift_direction = if server_position_ms > local {
+            "behind"
+        } else {
+            "ahead"
+        };
+
+        if drift > Self::DRIFT_THRESHOLD_MS {
+            debug!(
+                target: TIMER_LOG_TARGET,
+                "Drift correction applied: local={}ms, server={}ms, drift={}ms ({}) > threshold={}ms",
+                local, server_position_ms, drift, drift_direction, Self::DRIFT_THRESHOLD_MS
+            );
+            self.hard_sync(server_position_ms);
+            true
+        } else {
+            // Small drift: ignore, local timer is accurate enough
+            trace!(
+                target: TIMER_LOG_TARGET,
+                "Drift within threshold: local={}ms, server={}ms, drift={}ms ({}) <= threshold={}ms",
+                local, server_position_ms, drift, drift_direction, Self::DRIFT_THRESHOLD_MS
+            );
+            false
+        }
+    }
+
+    /// Set the playing state, handling the transition properly.
+    /// - When resuming: resets the reference instant to avoid time jumps
+    /// - When pausing: captures the current position as the new reference
+    pub fn set_playing(&mut self, playing: bool) {
+        if playing && !self.is_playing {
+            // Resuming: reset instant so elapsed time starts from 0
+            self.reference_instant = Instant::now();
+        } else if !playing && self.is_playing {
+            // Pausing: capture current interpolated position
+            self.reference_position_ms = self.interpolated_position_ms();
+            self.reference_instant = Instant::now();
+        }
+        self.is_playing = playing;
+    }
+
+    /// Check if playback is currently active
+    #[must_use]
+    pub const fn is_playing(&self) -> bool {
+        self.is_playing
+    }
+}
+
+impl Default for LocalPlaybackTimer {
     fn default() -> Self {
         Self::new()
     }
