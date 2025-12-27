@@ -1,0 +1,30 @@
+//! Path constants for configuration and cache files.
+
+use std::path::PathBuf;
+
+/// The name of the configuration directory under ~/.config/
+pub const CONFIG_DIR_NAME: &str = "versualizer";
+
+/// The name of the main configuration file
+pub const CONFIG_FILE_NAME: &str = "config.toml";
+
+/// The name of the lyrics cache database file
+pub const LYRICS_CACHE_DB_FILE_NAME: &str = "lyrics_cache.db";
+
+/// Get the configuration directory path (~/.config/versualizer/)
+pub fn config_dir() -> PathBuf {
+    dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(".config")
+        .join(CONFIG_DIR_NAME)
+}
+
+/// Get the config file path (~/.config/versualizer/config.toml)
+pub fn config_path() -> PathBuf {
+    config_dir().join(CONFIG_FILE_NAME)
+}
+
+/// Get the lyrics cache database path (~/.config/versualizer/lyrics_cache.db)
+pub fn lyrics_cache_db_path() -> PathBuf {
+    config_dir().join(LYRICS_CACHE_DB_FILE_NAME)
+}

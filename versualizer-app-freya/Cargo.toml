@@ -1,0 +1,26 @@
+[package]
+name = "versualizer-app-freya"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "versualizer"
+path = "src/main.rs"
+
+[dependencies]
+versualizer-core = { path = "../versualizer-core" }
+versualizer-spotify = { path = "../versualizer-spotify" }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+freya = { workspace = true }
+freya-radio = { workspace = true }
+futures-channel = { workspace = true }
+futures-lite = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+directories = { workspace = true }
+global-hotkey = { workspace = true }
+tokio-util = { workspace = true }
