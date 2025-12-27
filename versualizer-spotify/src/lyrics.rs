@@ -90,6 +90,152 @@ impl SpotifyLyricsProvider {
 
         None
     }
+
+    /// Validate query and extract track ID
+    fn validate_query(&self, query: &LyricsQuery) -> Result<String, CoreError> {
+        if !self.is_configured() {
+            return Err(CoreError::LyricsProviderFailed {
+                provider: self.name().to_string(),
+                reason: "SP_DC cookie not configured".into(),
+            });
+        }
+
+        query.spotify_track_id.as_ref().map_or_else(
+            || {
+                Err(CoreError::LyricsProviderFailed {
+                    provider: self.name().to_string(),
+                    reason: "Spotify track ID required for Spotify lyrics".into(),
+                })
+            },
+            |id| {
+                Self::extract_track_id(id)
+                    .map(String::from)
+                    .ok_or_else(|| CoreError::LyricsProviderFailed {
+                        provider: self.name().to_string(),
+                        reason: format!("Invalid Spotify track ID: {id}"),
+                    })
+            },
+        )
+    }
+
+    /// Send request to Spotify lyrics API
+    async fn send_request(&self, track_id: &str) -> Result<reqwest::Response, CoreError> {
+        let url = format!("{SPOTIFY_LYRICS_API}/{track_id}?format=json&market=from_token");
+        info!(target: LOG_TARGET, "Spotify GET: {}", url);
+
+        let response = self
+            .client
+            .get(&url)
+            .header("Cookie", format!("sp_dc={}", self.sp_dc))
+            .header("App-Platform", "WebPlayer")
+            .header(
+                "User-Agent",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            )
+            .send()
+            .await?;
+
+        info!(target: LOG_TARGET, "Spotify response status: {}", response.status());
+        Ok(response)
+    }
+
+    /// Check if response indicates not found (404).
+    /// Returns `Some(FetchedLyrics)` with `NotFound` result if 404, `None` otherwise.
+    fn check_not_found(response: &reqwest::Response, track_id: &str) -> Option<FetchedLyrics> {
+        if response.status() == reqwest::StatusCode::NOT_FOUND {
+            info!(target: LOG_TARGET, "No Spotify lyrics found for track: {}", track_id);
+            return Some(FetchedLyrics {
+                result: LyricsResult::NotFound,
+                provider_id: track_id.to_string(),
+            });
+        }
+        None
+    }
+
+    /// Check for authentication errors
+    fn check_auth_error(&self, response: &reqwest::Response) -> Result<(), CoreError> {
+        if response.status() == reqwest::StatusCode::UNAUTHORIZED {
+            warn!(target: LOG_TARGET, "SP_DC cookie expired or invalid (401 Unauthorized)");
+            return Err(CoreError::LyricsProviderFailed {
+                provider: self.name().to_string(),
+                reason: "SP_DC cookie expired or invalid".into(),
+            });
+        }
+
+        if !response.status().is_success() {
+            warn!(target: LOG_TARGET, "Spotify lyrics API returned status: {}", response.status());
+            return Err(CoreError::LyricsProviderFailed {
+                provider: self.name().to_string(),
+                reason: format!("Spotify lyrics API returned status: {}", response.status()),
+            });
+        }
+        Ok(())
+    }
+
+    /// Parse synced lyrics from Spotify response
+    fn parse_synced_lyrics(
+        lyrics: SpotifyLyrics,
+        query: &LyricsQuery,
+        track_id: String,
+    ) -> FetchedLyrics {
+        let lines: Vec<LrcLine> = lyrics
+            .lines
+            .into_iter()
+            .filter(|line| !line.words.is_empty() && line.words != "♪")
+            .map(|line| LrcLine {
+                start_time: Duration::from_millis(line.start_time_ms.parse().unwrap_or(0)),
+                text: line.words,
+                words: None,
+            })
+            .collect();
+
+        if lines.is_empty() {
+            return FetchedLyrics {
+                result: LyricsResult::NotFound,
+                provider_id: track_id,
+            };
+        }
+
+        let lrc = LrcFile {
+            metadata: LrcMetadata {
+                title: Some(query.track_name.clone()),
+                artist: Some(query.artist_name.clone()),
+                album: query.album_name.clone(),
+                ..Default::default()
+            },
+            lines,
+        };
+
+        info!(target: LOG_TARGET, "Got Spotify synced lyrics with {} lines", lrc.lines.len());
+        FetchedLyrics {
+            result: LyricsResult::Synced(lrc),
+            provider_id: track_id,
+        }
+    }
+
+    /// Parse unsynced lyrics from Spotify response
+    fn parse_unsynced_lyrics(lyrics: &SpotifyLyrics, track_id: String) -> FetchedLyrics {
+        let text: String = lyrics
+            .lines
+            .iter()
+            .filter(|line| !line.words.is_empty() && line.words != "♪")
+            .map(|line| line.words.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        if text.is_empty() {
+            return FetchedLyrics {
+                result: LyricsResult::NotFound,
+                provider_id: track_id,
+            };
+        }
+
+        info!(target: LOG_TARGET, "Got Spotify unsynced lyrics");
+        FetchedLyrics {
+            result: LyricsResult::Unsynced(text),
+            provider_id: track_id,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -105,13 +251,11 @@ struct SpotifyLyrics {
 }
 
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
 struct SpotifyLyricsLine {
     #[serde(rename = "startTimeMs")]
     start_time_ms: String,
     words: String,
-    #[serde(rename = "endTimeMs")]
-    end_time_ms: Option<String>,
+    // Note: end_time_ms exists in API response but is unused; serde ignores unknown fields by default
 }
 
 #[async_trait]
@@ -120,142 +264,32 @@ impl LyricsProvider for SpotifyLyricsProvider {
         "spotify_lyrics"
     }
 
-    #[allow(clippy::too_many_lines)]
     async fn fetch(&self, query: &LyricsQuery) -> Result<FetchedLyrics, CoreError> {
-        if !self.is_configured() {
-            return Err(CoreError::LyricsProviderFailed {
-                provider: self.name().to_string(),
-                reason: "SP_DC cookie not configured".to_string(),
-            });
+        let track_id = self.validate_query(query)?;
+        let response = self.send_request(&track_id).await?;
+
+        // Handle 404 (not found) - return early with NotFound result
+        if let Some(not_found) = Self::check_not_found(&response, &track_id) {
+            return Ok(not_found);
         }
 
-        let track_id = match &query.spotify_track_id {
-            Some(id) => match Self::extract_track_id(id) {
-                Some(extracted) => extracted.to_string(),
-                None => {
-                    return Err(CoreError::LyricsProviderFailed {
-                        provider: self.name().to_string(),
-                        reason: format!("Invalid Spotify track ID: {id}"),
-                    });
-                }
-            },
-            None => {
-                return Err(CoreError::LyricsProviderFailed {
-                    provider: self.name().to_string(),
-                    reason: "Spotify track ID required for Spotify lyrics".to_string(),
-                });
-            }
-        };
-
-        info!(target: LOG_TARGET, "Fetching Spotify lyrics for track: {}", track_id);
-
-        let url = format!("{SPOTIFY_LYRICS_API}/{track_id}?format=json&market=from_token");
-
-        let response = self
-            .client
-            .get(&url)
-            .header("Cookie", format!("sp_dc={}", self.sp_dc))
-            .header("App-Platform", "WebPlayer")
-            .header(
-                "User-Agent",
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            )
-            .send()
-            .await?;
-
-        if response.status() == reqwest::StatusCode::NOT_FOUND {
-            info!(target: LOG_TARGET, "No Spotify lyrics found for track: {}", track_id);
-            return Ok(FetchedLyrics {
-                result: LyricsResult::NotFound,
-                provider_id: track_id,
-            });
-        }
-
-        if response.status() == reqwest::StatusCode::UNAUTHORIZED {
-            warn!(target: LOG_TARGET, "SP_DC cookie expired or invalid (401 Unauthorized)");
-            return Err(CoreError::LyricsProviderFailed {
-                provider: self.name().to_string(),
-                reason: "SP_DC cookie expired or invalid".to_string(),
-            });
-        }
-
-        if !response.status().is_success() {
-            warn!(target: LOG_TARGET, "Spotify lyrics API returned status: {}", response.status());
-            return Err(CoreError::LyricsProviderFailed {
-                provider: self.name().to_string(),
-                reason: format!("Spotify lyrics API returned status: {}", response.status()),
-            });
-        }
+        // Check for auth errors and other failures
+        self.check_auth_error(&response)?;
 
         let result: SpotifyLyricsResponse = response.json().await?;
 
-        match result.lyrics.sync_type.as_str() {
+        Ok(match result.lyrics.sync_type.as_str() {
             "LINE_SYNCED" | "SYLLABLE_SYNCED" => {
-                let lines: Vec<LrcLine> = result
-                    .lyrics
-                    .lines
-                    .into_iter()
-                    .filter(|line| !line.words.is_empty() && line.words != "♪")
-                    .map(|line| LrcLine {
-                        start_time: Duration::from_millis(line.start_time_ms.parse().unwrap_or(0)),
-                        text: line.words,
-                        words: None, // Spotify doesn't provide word-level timing in this API
-                    })
-                    .collect();
-
-                if lines.is_empty() {
-                    return Ok(FetchedLyrics {
-                        result: LyricsResult::NotFound,
-                        provider_id: track_id,
-                    });
-                }
-
-                let lrc = LrcFile {
-                    metadata: LrcMetadata {
-                        title: Some(query.track_name.clone()),
-                        artist: Some(query.artist_name.clone()),
-                        album: query.album_name.clone(),
-                        ..Default::default()
-                    },
-                    lines,
-                };
-
-                info!(target: LOG_TARGET, "Got Spotify synced lyrics with {} lines", lrc.lines.len());
-                Ok(FetchedLyrics {
-                    result: LyricsResult::Synced(lrc),
-                    provider_id: track_id,
-                })
+                Self::parse_synced_lyrics(result.lyrics, query, track_id)
             }
-            "UNSYNCED" => {
-                let text: String = result
-                    .lyrics
-                    .lines
-                    .iter()
-                    .filter(|line| !line.words.is_empty() && line.words != "♪")
-                    .map(|line| line.words.as_str())
-                    .collect::<Vec<_>>()
-                    .join("\n");
-
-                if text.is_empty() {
-                    return Ok(FetchedLyrics {
-                        result: LyricsResult::NotFound,
-                        provider_id: track_id,
-                    });
-                }
-
-                info!(target: LOG_TARGET, "Got Spotify unsynced lyrics");
-                Ok(FetchedLyrics {
-                    result: LyricsResult::Unsynced(text),
-                    provider_id: track_id,
-                })
-            }
+            "UNSYNCED" => Self::parse_unsynced_lyrics(&result.lyrics, track_id),
             _ => {
                 warn!(target: LOG_TARGET, "Unknown Spotify sync type: {}", result.lyrics.sync_type);
-                Ok(FetchedLyrics {
+                FetchedLyrics {
                     result: LyricsResult::NotFound,
                     provider_id: track_id,
-                })
+                }
             }
-        }
+        })
     }
 }

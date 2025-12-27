@@ -53,6 +53,7 @@ url = "2"
 open = "5"
 
 # Async channels for UI
+futures = "0.3"
 futures-channel = "0.3"
 futures-lite = "2"
 

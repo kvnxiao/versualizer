@@ -17,7 +17,8 @@
       "Bash(head:*)",
       "Bash(ls:*)",
       "Bash(tree:*)",
-      "Bash(cargo doc:*)"
+      "Bash(cargo doc:*)",
+      "Bash(cargo tree:*)"
     ]
   }
 }

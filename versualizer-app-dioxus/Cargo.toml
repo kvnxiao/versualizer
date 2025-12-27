@@ -20,6 +20,9 @@ versualizer-spotify = { path = "../versualizer-spotify" }
 # Dioxus desktop
 dioxus = { version = "0.7", features = ["desktop"] }
 
+# Dioxus animations
+dioxus-motion = { version = "0.3", default-features = false, features = ["desktop"] }
+
 # Async runtime
 tokio = { workspace = true }
 

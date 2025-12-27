@@ -16,6 +16,25 @@ const DEFAULT_TIMEOUT_SECS: u64 = 10;
 /// Default number of retry attempts
 const DEFAULT_MAX_RETRIES: u32 = 3;
 
+/// Calculate a score for duration matching (lower is better).
+/// Returns 0 for exact matches, higher values for larger differences.
+/// Capped at `i32::MAX` to prevent overflow.
+fn duration_score(actual: Option<f64>, expected: Option<u32>, scale: f64) -> i32 {
+    match (actual, expected) {
+        (Some(d), Some(q)) => {
+            let diff = (d - f64::from(q)).abs() * scale;
+            // Clamp to i32::MAX and safely convert
+            #[allow(clippy::cast_possible_truncation)]
+            if diff > f64::from(i32::MAX) {
+                i32::MAX
+            } else {
+                diff as i32
+            }
+        }
+        _ => 50, // Default score when duration is unknown
+    }
+}
+
 /// LRCLIB.net lyrics provider
 pub struct LrclibProvider {
     client: ClientWithMiddleware,
@@ -45,16 +64,14 @@ impl LrclibProvider {
     }
 }
 
+/// Response from LRCLIB API
+/// Note: API returns additional fields (trackName, albumName) that we don't use;
+/// serde ignores unknown fields by default.
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
 struct LrclibResponse {
     id: i64,
-    #[serde(rename = "trackName")]
-    track_name: String,
     #[serde(rename = "artistName")]
     artist_name: String,
-    #[serde(rename = "albumName")]
-    album_name: Option<String>,
     duration: Option<f64>,
     instrumental: bool,
     #[serde(rename = "plainLyrics")]
@@ -94,9 +111,10 @@ impl LyricsProvider for LrclibProvider {
             let _ = write!(url, "&duration={duration}");
         }
 
-        debug!(target: LOG_TARGET, "LRCLIB request URL (exact): {}", url);
+        info!(target: LOG_TARGET, "LRCLIB GET (exact match): {}", url);
 
         let response = self.client.get(&url).send().await?;
+        info!(target: LOG_TARGET, "LRCLIB response status: {}", response.status());
 
         if response.status() == reqwest::StatusCode::NOT_FOUND {
             info!(target: LOG_TARGET, "LRCLIB exact match not found, trying search by track name only");
@@ -134,9 +152,10 @@ impl LrclibProvider {
             urlencoding::encode(&query.track_name)
         );
 
-        debug!(target: LOG_TARGET, "LRCLIB request URL (search by track name): {}", url);
+        info!(target: LOG_TARGET, "LRCLIB GET (search by track): {}", url);
 
         let response = self.client.get(&url).send().await?;
+        info!(target: LOG_TARGET, "LRCLIB response status: {}", response.status());
 
         if !response.status().is_success() {
             warn!(target: LOG_TARGET, "LRCLIB search returned status: {}", response.status());
@@ -171,18 +190,13 @@ impl LrclibProvider {
         }
 
         // Find the best match (prefer synced lyrics, then closest duration)
-        #[allow(clippy::cast_possible_truncation)]
         let best = filtered
             .into_iter()
             .filter(|r| r.synced_lyrics.is_some() || r.plain_lyrics.is_some())
             .min_by_key(|r| {
                 // Prefer synced, then by duration match
                 let sync_score = if r.synced_lyrics.is_some() { 0 } else { 100 };
-                let duration_score = match (r.duration, query.duration_secs) {
-                    (Some(d), Some(q)) => ((d - f64::from(q)).abs() * 10.0) as i32,
-                    _ => 50,
-                };
-                sync_score + duration_score
+                sync_score + duration_score(r.duration, query.duration_secs, 10.0)
             });
 
         if let Some(result) = best {
@@ -208,9 +222,10 @@ impl LrclibProvider {
             urlencoding::encode(&search_query)
         );
 
-        debug!(target: LOG_TARGET, "LRCLIB request URL (full search): {}", url);
+        info!(target: LOG_TARGET, "LRCLIB GET (full search): {}", url);
 
         let response = self.client.get(&url).send().await?;
+        info!(target: LOG_TARGET, "LRCLIB response status: {}", response.status());
 
         if !response.status().is_success() {
             return Err(CoreError::LyricsProviderFailed {
@@ -229,18 +244,13 @@ impl LrclibProvider {
         }
 
         // Find the best match (prefer synced lyrics, then closest duration)
-        #[allow(clippy::cast_possible_truncation)]
         let best = results
             .into_iter()
             .filter(|r| r.synced_lyrics.is_some() || r.plain_lyrics.is_some())
             .min_by_key(|r| {
                 // Prefer synced, then by duration match
                 let sync_score = if r.synced_lyrics.is_some() { 0 } else { 100 };
-                let duration_score = match (r.duration, query.duration_secs) {
-                    (Some(d), Some(q)) => (d - f64::from(q)).abs() as i32,
-                    _ => 50,
-                };
-                sync_score + duration_score
+                sync_score + duration_score(r.duration, query.duration_secs, 1.0)
             });
 
         match best {
@@ -259,7 +269,6 @@ impl LrclibProvider {
         }
     }
 
-    #[allow(clippy::cast_possible_truncation)]
     fn parse_response(result: LrclibResponse) -> FetchedLyrics {
         let provider_id = result.id.to_string();
 

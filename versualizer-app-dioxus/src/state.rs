@@ -2,6 +2,34 @@ use dioxus::prelude::*;
 use std::time::Instant;
 use versualizer_core::LrcFile;
 
+/// UI display configuration for karaoke rendering.
+/// These values control line visibility, scaling, and animation timing.
+#[derive(Clone, Debug)]
+pub struct KaraokeDisplayConfig {
+    /// Number of visible lines (1-3), excluding buffer lines
+    pub max_lines: usize,
+    /// Scale factor for the current line (e.g., 1.0)
+    pub current_line_scale: f32,
+    /// Scale factor for upcoming/buffer lines (e.g., 0.8)
+    pub upcoming_line_scale: f32,
+    /// Transition duration in milliseconds
+    pub transition_ms: u32,
+    /// CSS easing function (e.g., "ease-in-out")
+    pub easing: String,
+}
+
+impl Default for KaraokeDisplayConfig {
+    fn default() -> Self {
+        Self {
+            max_lines: 3,
+            current_line_scale: 1.0,
+            upcoming_line_scale: 0.8,
+            transition_ms: 200,
+            easing: "ease-in-out".into(),
+        }
+    }
+}
+
 /// Convert u128 milliseconds to u64, saturating at `u64::MAX`.
 /// In practice, this is safe because song durations never exceed `u64::MAX` milliseconds
 /// (which would be ~584 million years).
@@ -20,11 +48,19 @@ pub struct TimedLine {
     pub duration_ms: u64,
 }
 
+/// Sentinel value indicating we're in the instrumental intro (before first lyric line)
+pub const INTRO_LINE_INDEX: i32 = -1;
+
+/// Music note character for instrumental sections
+const MUSIC_NOTE: &str = "\u{266A}"; // ♪
+
 /// Precomputed lyrics with all timing information
 #[derive(Clone, Debug, Default)]
 pub struct PrecomputedLyrics {
     /// All lines with their timing info
     pub lines: Vec<TimedLine>,
+    /// Duration of instrumental intro (0 if lyrics start at beginning)
+    pub intro_duration_ms: u64,
 }
 
 impl PrecomputedLyrics {
@@ -44,26 +80,61 @@ impl PrecomputedLyrics {
                 5000 // Default 5 seconds for the last line
             };
 
+            // Use music note for empty/whitespace-only lines (instrumental breaks)
+            let text = if line.text.trim().is_empty() {
+                MUSIC_NOTE.into()
+            } else {
+                line.text.clone()
+            };
+
             lines.push(TimedLine {
-                text: line.text.clone(),
+                text,
                 start_time_ms,
                 duration_ms,
             });
         }
 
-        Self { lines }
+        // Calculate intro duration (time before first line starts)
+        let intro_duration_ms = lines.first().map_or(0, |l| l.start_time_ms);
+
+        Self {
+            lines,
+            intro_duration_ms,
+        }
     }
 
-    /// Find the line index for a given position in milliseconds
+    /// Find the line index for a given position in milliseconds.
+    /// Returns `INTRO_LINE_INDEX` (-1) if we're before the first line starts.
     #[must_use]
-    pub fn line_index_at(&self, position_ms: u64) -> Option<usize> {
+    pub fn line_index_at(&self, position_ms: u64) -> i32 {
         // Find the last line that started before or at the current position
         self.lines
             .iter()
             .enumerate()
             .rev()
             .find(|(_, line)| line.start_time_ms <= position_ms)
-            .map(|(i, _)| i)
+            .map_or(INTRO_LINE_INDEX, |(i, _)| {
+                // Safe: line count is always much less than i32::MAX
+                #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+                let idx = i as i32;
+                idx
+            })
+    }
+
+    /// Create a virtual "intro line" with music note for the instrumental intro period
+    #[must_use]
+    pub fn intro_line(&self) -> TimedLine {
+        TimedLine {
+            text: MUSIC_NOTE.into(),
+            start_time_ms: 0,
+            duration_ms: self.intro_duration_ms,
+        }
+    }
+
+    /// Check if there's an instrumental intro (first line doesn't start at 0)
+    #[must_use]
+    pub const fn has_intro(&self) -> bool {
+        self.intro_duration_ms > 0
     }
 }
 
@@ -76,8 +147,8 @@ impl PrecomputedLyrics {
 pub struct KaraokeState {
     /// All precomputed lines for the current track
     pub lyrics: Signal<Option<PrecomputedLyrics>>,
-    /// Current line index
-    pub current_index: Signal<Option<usize>>,
+    /// Current line index (-1 = intro/before first line, 0+ = actual line index)
+    pub current_index: Signal<i32>,
     /// Reference position from last sync event (milliseconds)
     pub reference_position_ms: Signal<u64>,
     /// When we received the reference position (for local interpolation)
@@ -92,7 +163,7 @@ impl KaraokeState {
     pub fn new() -> Self {
         Self {
             lyrics: Signal::new(None),
-            current_index: Signal::new(None),
+            current_index: Signal::new(INTRO_LINE_INDEX),
             reference_position_ms: Signal::new(0),
             reference_instant: Signal::new(None),
             is_playing: Signal::new(false),
@@ -103,8 +174,8 @@ impl KaraokeState {
     pub fn set_lyrics(&mut self, lrc: &LrcFile) {
         let precomputed = PrecomputedLyrics::from_lrc(lrc);
         self.lyrics.set(Some(precomputed));
-        // Reset position tracking
-        self.current_index.set(None);
+        // Reset position tracking - start at intro
+        self.current_index.set(INTRO_LINE_INDEX);
         self.reference_position_ms.set(0);
         self.reference_instant.set(None);
     }
@@ -112,7 +183,7 @@ impl KaraokeState {
     /// Clear lyrics (no lyrics available or track changed)
     pub fn clear_lyrics(&mut self) {
         self.lyrics.set(None);
-        self.current_index.set(None);
+        self.current_index.set(INTRO_LINE_INDEX);
         self.reference_position_ms.set(0);
         self.reference_instant.set(None);
     }
@@ -139,7 +210,9 @@ impl KaraokeState {
         }
     }
 
-    /// Get visible lines around the current position
+    /// Get visible lines around the current position.
+    /// When in intro (idx < 0), returns intro line + first few actual lines.
+    /// When on a line (idx >= 0), returns lines around the current position.
     #[must_use]
     pub fn visible_lines(&self, before: usize, after: usize) -> Vec<TimedLine> {
         let lyrics = self.lyrics.read();
@@ -149,15 +222,23 @@ impl KaraokeState {
             return Vec::new();
         };
 
-        let Some(idx) = current_idx else {
-            // No current line yet, return first few lines if available
-            return lyrics.lines.iter().take(after + 1).cloned().collect();
-        };
-
-        let start = idx.saturating_sub(before);
-        let end = (idx + after + 1).min(lyrics.lines.len());
-
-        lyrics.lines[start..end].to_vec()
+        if current_idx < 0 {
+            // In intro: show intro line (music note) + upcoming lines
+            let mut result = Vec::with_capacity(1 + after);
+            if lyrics.has_intro() {
+                result.push(lyrics.intro_line());
+            }
+            // Add upcoming actual lines
+            result.extend(lyrics.lines.iter().take(after).cloned());
+            result
+        } else {
+            // On an actual line
+            #[allow(clippy::cast_sign_loss)]
+            let idx = current_idx as usize;
+            let start = idx.saturating_sub(before);
+            let end = (idx + after + 1).min(lyrics.lines.len());
+            lyrics.lines[start..end].to_vec()
+        }
     }
 }
 

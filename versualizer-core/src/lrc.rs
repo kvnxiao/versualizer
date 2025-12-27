@@ -417,10 +417,11 @@ fn parse_enhanced_words(text: &str) -> Option<Vec<LrcWord>> {
 }
 
 /// Apply a millisecond offset to a duration (can be negative)
-#[allow(clippy::cast_sign_loss)]
 fn apply_offset(duration: Duration, offset_ms: i64) -> Duration {
     if offset_ms >= 0 {
-        duration + Duration::from_millis(offset_ms as u64)
+        // Safe: we just checked offset_ms is non-negative, so it fits in u64
+        let offset = u64::try_from(offset_ms).unwrap_or(0);
+        duration + Duration::from_millis(offset)
     } else {
         duration.saturating_sub(Duration::from_millis(offset_ms.unsigned_abs()))
     }

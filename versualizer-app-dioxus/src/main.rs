@@ -5,7 +5,7 @@ mod state;
 
 use crate::app::App;
 use crate::bridge::use_sync_engine_bridge;
-use crate::state::KaraokeState;
+use crate::state::{KaraokeDisplayConfig, KaraokeState};
 use dioxus::desktop::{LogicalSize, WindowBuilder};
 use dioxus::prelude::*;
 use std::sync::Arc;
@@ -106,12 +106,33 @@ fn main() {
         .with_window(window)
         .with_custom_head(custom_head);
 
+    // Create display config from loaded config
+    let display_config = KaraokeDisplayConfig {
+        max_lines: config.ui.layout.max_lines.clamp(1, 3),
+        current_line_scale: config.ui.layout.current_line_scale,
+        upcoming_line_scale: 0.8,
+        transition_ms: config.ui.animation.transition_ms,
+        easing: convert_easing(&config.ui.animation.easing),
+    };
+
     // Launch Dioxus application
-    // Use with_context to inject SyncEngine before launch (since launch requires a fn pointer)
+    // Use with_context to inject SyncEngine and display config before launch
     dioxus::LaunchBuilder::desktop()
         .with_cfg(dioxus_config)
         .with_context(sync_engine)
+        .with_context(display_config)
         .launch(app);
+}
+
+/// Convert config easing format to CSS easing function
+fn convert_easing(easing: &str) -> String {
+    match easing {
+        "linear" => "linear",
+        "ease_in" => "ease-in",
+        "ease_out" => "ease-out",
+        _ => "ease-in-out",
+    }
+    .into()
 }
 
 /// Root component that sets up context and renders the app

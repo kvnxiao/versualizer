@@ -5,10 +5,25 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, warn};
-use versualizer_core::{PlaybackState, SyncEngine, TrackInfo};
+use versualizer_core::{DurationExt, PlaybackState, SyncEngine, TrackInfo};
 
 const LOG_TARGET_POLLER: &str = "versualizer::spotify::poller";
 const LOG_TARGET_FETCHER: &str = "versualizer::lyrics::fetcher";
+
+/// Format milliseconds as M:SS/M:SS timestamp (e.g., "0:26/3:23")
+fn format_timestamp(position_ms: u64, duration_ms: u64) -> String {
+    let pos_secs = position_ms / 1000;
+    let pos_mins = pos_secs / 60;
+    let pos_remaining_secs = pos_secs % 60;
+
+    let dur_secs = duration_ms / 1000;
+    let dur_mins = dur_secs / 60;
+    let dur_remaining_secs = dur_secs % 60;
+
+    format!(
+        "{pos_mins}:{pos_remaining_secs:02}/{dur_mins}:{dur_remaining_secs:02}"
+    )
+}
 
 /// Spotify playback state poller
 pub struct SpotifyPoller {
@@ -74,11 +89,11 @@ impl SpotifyPoller {
                             consecutive_errors += 1;
                             warn!(target: LOG_TARGET_POLLER, "Poll error (attempt {}): {}", consecutive_errors, e);
 
-                            // Exponential backoff
-                            #[allow(clippy::cast_possible_truncation)]
-                            let backoff = Duration::from_millis(
-                                (100 * (2_u64.pow(consecutive_errors.min(10)))).min(max_backoff.as_secs() * 1000)
-                            );
+                            // Exponential backoff: 100ms * 2^errors, capped at max_backoff
+                            // consecutive_errors is capped at 10, so max is 100 * 2^10 = 102,400ms
+                            let backoff_ms = 100_u64
+                                .saturating_mul(2_u64.saturating_pow(consecutive_errors.min(10)));
+                            let backoff = Duration::from_millis(backoff_ms.min(max_backoff.as_millis_u64()));
 
                             if consecutive_errors >= 5 {
                                 error!(target: LOG_TARGET_POLLER, "Too many consecutive errors, waiting {} seconds", backoff.as_secs());
@@ -115,19 +130,25 @@ impl SpotifyPoller {
         let request_latency = request_start.elapsed();
 
         let state = if let Some(context) = playback {
-            // Log basic playback info
-            let status = if context.is_playing { "playing" } else { "paused" };
-            let track_desc = match &context.item {
+            // Log basic playback info with timestamp
+            let status = if context.is_playing { "▶️" } else { "⏸️" };
+            let (track_desc, duration_ms) = match &context.item {
                 Some(rspotify::model::PlayableItem::Track(t)) => {
                     let artist = t.artists.first().map_or("Unknown", |a| a.name.as_str());
-                    format!("{} - {}", artist, t.name)
+                    let dur_ms = u64::try_from(t.duration.num_milliseconds()).unwrap_or(0);
+                    (format!("{} - {}", artist, t.name), dur_ms)
                 }
                 Some(rspotify::model::PlayableItem::Episode(e)) => {
-                    format!("{} - {}", e.show.name, e.name)
+                    let dur_ms = u64::try_from(e.duration.num_milliseconds()).unwrap_or(0);
+                    (format!("{} - {}", e.show.name, e.name), dur_ms)
                 }
-                None => "Unknown track".into(),
+                None => ("Unknown track".into(), 0),
             };
-            info!(target: LOG_TARGET_POLLER, "Spotify: {} | {}", status, track_desc);
+            let position_ms = context
+                .progress
+                .map_or(0, |p| u64::try_from(p.num_milliseconds()).unwrap_or(0));
+            let timestamp = format_timestamp(position_ms, duration_ms);
+            info!(target: LOG_TARGET_POLLER, "{}  {} | {}", status, timestamp, track_desc);
 
             // Extract track info and duration together to avoid borrow issues
             let (track_info, duration) = match &context.item {
@@ -322,8 +343,7 @@ versualizer_core::SyncEvent::PlaybackStarted { track, .. }) => {
                                 artist: track.artist.clone(),
                                 track: track.name.clone(),
                                 album: Some(track.album.clone()),
-                                #[allow(clippy::cast_possible_truncation)]
-                            duration_ms: Some(track.duration.as_millis() as i64),
+                                duration_ms: Some(track.duration.as_millis_i64()),
                             };
 
                             if let Err(e) = self

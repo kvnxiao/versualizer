@@ -29,7 +29,7 @@ tokio-util = { workspace = true }
 url = { workspace = true }
 open = { workspace = true }
 axum = { workspace = true }
-futures = "0.3"
+futures = { workspace = true }
 
 [lints]
 workspace = true

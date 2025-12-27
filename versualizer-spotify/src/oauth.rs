@@ -256,123 +256,23 @@ impl SpotifyOAuth {
     /// # Errors
     ///
     /// Returns an error if the server cannot start, the browser cannot be opened, or authentication fails.
-    #[allow(clippy::too_many_lines)]
     pub async fn authenticate_interactive(&self) -> Result<(), SpotifyError> {
-        // Parse the redirect URI to get host and port
-        let redirect_uri = &self.client.oauth.redirect_uri;
-        let parsed_uri = url::Url::parse(redirect_uri).map_err(|e| SpotifyError::AuthFailed {
-            reason: format!("Invalid redirect URI: {e}"),
-        })?;
-
-        let host = parsed_uri.host_str().unwrap_or("localhost");
-        let port = parsed_uri.port().unwrap_or(8888);
-        let callback_path = parsed_uri.path();
+        let (host, port, callback_path) = self.parse_redirect_uri()?;
 
         // Create a oneshot channel to receive the auth code
         let (tx, rx) = oneshot::channel::<String>();
         let tx = Arc::new(tokio::sync::Mutex::new(Some(tx)));
 
-        // Build the axum router
-        let tx_clone = tx.clone();
-        let app = Router::new().route(
-            callback_path,
-            get(move |Query(params): Query<CallbackParams>| {
-                let tx = tx_clone.clone();
-                async move {
-                    if let Some(code) = params.code {
-                        // Send the code through the channel
-                        // Extract the value first to avoid holding lock in scrutinee
-                        let sender = tx.lock().await.take();
-                        if let Some(sender) = sender {
-                            let _ = sender.send(code);
-                        }
-                        Html(SUCCESS_HTML.to_string())
-                    } else if let Some(error) = params.error {
-                        Html(format!(
-                            r#"<!DOCTYPE html>
-                            <html>
-                            <head><title>Authorization Failed</title></head>
-                            <body style="font-family: sans-serif; text-align: center; padding: 50px;">
-                                <h1>Authorization Failed</h1>
-                                <p>Error: {error}</p>
-                                <p>Please close this window and try again.</p>
-                            </body>
-                            </html>"#
-                        ))
-                    } else {
-                        Html(
-                            r#"<!DOCTYPE html>
-                            <html>
-                            <head><title>Authorization Failed</title></head>
-                            <body style="font-family: sans-serif; text-align: center; padding: 50px;">
-                                <h1>Authorization Failed</h1>
-                                <p>No authorization code received.</p>
-                                <p>Please close this window and try again.</p>
-                            </body>
-                            </html>"#
-                                .to_string(),
-                        )
-                    }
-                }
-            }),
-        );
+        // Build router and start server
+        let app = Self::build_callback_router(&callback_path, tx);
+        let (listener, addr) = Self::start_callback_server(&host, port, &callback_path).await?;
 
-        // Start the server
-        let addr: SocketAddr = format!("{}:{}", if host == "localhost" { "127.0.0.1" } else { host }, port)
-            .parse()
-            .map_err(|e| SpotifyError::AuthFailed {
-                reason: format!("Invalid address: {e}"),
-            })?;
-
-        let listener = tokio::net::TcpListener::bind(addr).await.map_err(|e| {
-            SpotifyError::AuthFailed {
-                reason: format!("Failed to bind to {addr}: {e}"),
-            }
-        })?;
-
-        info!(target: LOG_TARGET, "OAuth callback server listening on http://{}{}", addr, callback_path);
-
-        // Get the authorization URL
+        // Get auth URL and prompt user
         let auth_url = self.get_authorize_url()?;
+        Self::prompt_authorization(&auth_url, addr, &callback_path);
 
-        println!("\n╔════════════════════════════════════════════════════════════════╗");
-        println!("║                    Spotify Authorization                        ║");
-        println!("╠════════════════════════════════════════════════════════════════╣");
-        println!("║ Opening browser for authorization...                           ║");
-        println!("╚════════════════════════════════════════════════════════════════╝\n");
-
-        // Try to open the URL in the default browser
-        if let Err(e) = open::that(&auth_url) {
-            warn!(target: LOG_TARGET, "Could not open browser automatically: {}", e);
-            println!("Please open this URL manually:\n{auth_url}\n");
-        }
-
-        println!("Waiting for authorization callback on http://{addr}{callback_path}...\n");
-
-        // Spawn the server and wait for the callback
-        let server = axum::serve(listener, app);
-
-        // Wait for either the code, server error, or timeout (10 minutes)
-        let code = tokio::select! {
-            result = rx => {
-                result.map_err(|_| SpotifyError::AuthFailed {
-                    reason: "Callback channel closed unexpectedly".to_string(),
-                })?
-            }
-            _ = server => {
-                return Err(SpotifyError::AuthFailed {
-                    reason: "Server stopped unexpectedly".to_string(),
-                });
-            }
-            () = tokio::time::sleep(Duration::from_secs(OAUTH_CALLBACK_TIMEOUT_SECS)) => {
-                return Err(SpotifyError::AuthFailed {
-                    reason: format!(
-                        "OAuth callback timed out after {} minutes. Please try again.",
-                        OAUTH_CALLBACK_TIMEOUT_SECS / 60
-                    ),
-                });
-            }
-        };
+        // Wait for callback
+        let code = Self::wait_for_callback(rx, listener, app).await?;
 
         info!(target: LOG_TARGET, "Received authorization code, exchanging for token...");
         self.handle_callback(&code).await
@@ -410,9 +310,135 @@ impl SpotifyOAuth {
     }
 
     /// Get the underlying Spotify client
-    #[must_use] 
+    #[must_use]
     pub const fn client(&self) -> &AuthCodeSpotify {
         &self.client
+    }
+
+    /// Parse redirect URI components for OAuth callback server
+    fn parse_redirect_uri(&self) -> Result<(String, u16, String), SpotifyError> {
+        let redirect_uri = &self.client.oauth.redirect_uri;
+        let parsed_uri = url::Url::parse(redirect_uri).map_err(|e| SpotifyError::AuthFailed {
+            reason: format!("Invalid redirect URI: {e}"),
+        })?;
+
+        let host = parsed_uri.host_str().unwrap_or("localhost").to_string();
+        let port = parsed_uri.port().unwrap_or(8888);
+        let callback_path = parsed_uri.path().to_string();
+
+        Ok((host, port, callback_path))
+    }
+
+    /// Build the OAuth callback router
+    fn build_callback_router(
+        callback_path: &str,
+        tx: Arc<tokio::sync::Mutex<Option<oneshot::Sender<String>>>>,
+    ) -> Router {
+        Router::new().route(
+            callback_path,
+            get(move |Query(params): Query<CallbackParams>| {
+                let tx = tx.clone();
+                async move { Self::handle_callback_request(params, tx).await }
+            }),
+        )
+    }
+
+    /// Handle incoming OAuth callback request
+    async fn handle_callback_request(
+        params: CallbackParams,
+        tx: Arc<tokio::sync::Mutex<Option<oneshot::Sender<String>>>>,
+    ) -> Html<String> {
+        if let Some(code) = params.code {
+            let sender = tx.lock().await.take();
+            if let Some(sender) = sender {
+                let _ = sender.send(code);
+            }
+            Html(SUCCESS_HTML.to_string())
+        } else if let Some(error) = params.error {
+            Html(format!(
+                r#"<!DOCTYPE html>
+                <html>
+                <head><title>Authorization Failed</title></head>
+                <body style="font-family: sans-serif; text-align: center; padding: 50px;">
+                    <h1>Authorization Failed</h1>
+                    <p>Error: {error}</p>
+                    <p>Please close this window and try again.</p>
+                </body>
+                </html>"#
+            ))
+        } else {
+            Html(ERROR_NO_CODE_HTML.to_string())
+        }
+    }
+
+    /// Start the callback server and bind to address
+    async fn start_callback_server(
+        host: &str,
+        port: u16,
+        callback_path: &str,
+    ) -> Result<(tokio::net::TcpListener, SocketAddr), SpotifyError> {
+        let addr: SocketAddr = format!(
+            "{}:{}",
+            if host == "localhost" { "127.0.0.1" } else { host },
+            port
+        )
+        .parse()
+        .map_err(|e| SpotifyError::AuthFailed {
+            reason: format!("Invalid address: {e}"),
+        })?;
+
+        let listener = tokio::net::TcpListener::bind(addr).await.map_err(|e| SpotifyError::AuthFailed {
+            reason: format!("Failed to bind to {addr}: {e}"),
+        })?;
+
+        info!(target: LOG_TARGET, "OAuth callback server listening on http://{}{}", addr, callback_path);
+        Ok((listener, addr))
+    }
+
+    /// Display authorization prompt and open browser
+    fn prompt_authorization(auth_url: &str, addr: SocketAddr, callback_path: &str) {
+        println!("\n╔════════════════════════════════════════════════════════════════╗");
+        println!("║                    Spotify Authorization                        ║");
+        println!("╠════════════════════════════════════════════════════════════════╣");
+        println!("║ Opening browser for authorization...                           ║");
+        println!("╚════════════════════════════════════════════════════════════════╝\n");
+
+        if let Err(e) = open::that(auth_url) {
+            warn!(target: LOG_TARGET, "Could not open browser automatically: {}", e);
+            println!("Please open this URL manually:\n{auth_url}\n");
+        }
+
+        println!("Waiting for authorization callback on http://{addr}{callback_path}...\n");
+    }
+
+    /// Wait for OAuth callback with timeout
+    async fn wait_for_callback(
+        rx: oneshot::Receiver<String>,
+        listener: tokio::net::TcpListener,
+        app: Router,
+    ) -> Result<String, SpotifyError> {
+        let server = axum::serve(listener, app);
+
+        tokio::select! {
+            result = rx => {
+                result.map_err(|_| SpotifyError::AuthFailed {
+                    reason: "Callback channel closed unexpectedly".into(),
+                })
+            }
+            _ = server => {
+                Err(SpotifyError::AuthFailed {
+                    reason: "Server stopped unexpectedly".into(),
+                })
+            }
+            () = tokio::time::sleep(Duration::from_secs(OAUTH_CALLBACK_TIMEOUT_SECS)) => {
+                Err(SpotifyError::AuthFailed {
+                    reason: format!(
+                        "OAuth callback timed out after {} minutes. Please try again.",
+                        OAUTH_CALLBACK_TIMEOUT_SECS / 60
+                    ),
+                })
+            }
+        }
     }
 }
 
@@ -422,6 +448,17 @@ struct CallbackParams {
     code: Option<String>,
     error: Option<String>,
 }
+
+/// HTML response for authorization error (no code received)
+const ERROR_NO_CODE_HTML: &str = r#"<!DOCTYPE html>
+<html>
+<head><title>Authorization Failed</title></head>
+<body style="font-family: sans-serif; text-align: center; padding: 50px;">
+    <h1>Authorization Failed</h1>
+    <p>No authorization code received.</p>
+    <p>Please close this window and try again.</p>
+</body>
+</html>"#;
 
 /// HTML response shown on successful authorization
 const SUCCESS_HTML: &str = r#"<!DOCTYPE html>

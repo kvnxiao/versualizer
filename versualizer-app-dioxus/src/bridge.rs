@@ -2,7 +2,7 @@ use crate::state::KaraokeState;
 use dioxus::prelude::*;
 use std::sync::Arc;
 use tracing::info;
-use versualizer_core::{SyncEngine, SyncEvent};
+use versualizer_core::{DurationExt, SyncEngine, SyncEvent};
 
 const LOG_TARGET: &str = "versualizer::bridge";
 
@@ -49,27 +49,19 @@ fn handle_sync_event(event: SyncEvent, mut karaoke: KaraokeState) {
         }
         SyncEvent::PositionSync { position } => {
             // Update reference position for drift correction
-            #[allow(clippy::cast_possible_truncation)]
-            let position_ms = position.as_millis() as u64;
-            karaoke.sync_position(position_ms);
+            karaoke.sync_position(position.as_millis_u64());
         }
         SyncEvent::SeekOccurred { position } => {
             // Seek requires immediate position update
-            #[allow(clippy::cast_possible_truncation)]
-            let position_ms = position.as_millis() as u64;
-            karaoke.sync_position(position_ms);
+            karaoke.sync_position(position.as_millis_u64());
         }
         SyncEvent::PlaybackStarted { position, .. }
         | SyncEvent::PlaybackResumed { position } => {
-            #[allow(clippy::cast_possible_truncation)]
-            let position_ms = position.as_millis() as u64;
-            karaoke.sync_position(position_ms);
+            karaoke.sync_position(position.as_millis_u64());
             karaoke.set_playing(true);
         }
         SyncEvent::PlaybackPaused { position } => {
-            #[allow(clippy::cast_possible_truncation)]
-            let position_ms = position.as_millis() as u64;
-            karaoke.sync_position(position_ms);
+            karaoke.sync_position(position.as_millis_u64());
             karaoke.set_playing(false);
         }
         SyncEvent::TrackChanged { .. } => {

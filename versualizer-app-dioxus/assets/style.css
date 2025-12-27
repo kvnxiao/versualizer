@@ -3,8 +3,11 @@
   --base-font-rem-size: 32px;
   --line-gap: 8px;
   --line-height: 1.5;
-  --current-font-size: 1rem;
-  --upcoming-font-size: 0.8rem;
+  /* Single base font size for all lines (scaling via transform) */
+  --base-font-size: 1rem;
+  /* Default transition values (overridden by inline styles) */
+  --transition-duration: 200ms;
+  --transition-easing: ease-in-out;
 }
 
 * {
@@ -18,7 +21,7 @@ html, body {
   height: 100%;
   background: transparent;
   font-size: var(--base-font-rem-size);
-  line-height: 1.5;
+  line-height: var(--line-height);
   overflow: hidden;
 }
 
@@ -37,38 +40,43 @@ body {
   background-color: rgba(0, 0, 0, 0.5);
 }
 
-/* Karaoke container - holds all visible lines */
+/* Karaoke container - clips overflow for buffer lines */
 .karaoke-container {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--line-gap);
-  /* Reserve space for 3 lines (with line-height) + 2 gaps */
-  min-height: calc(
-    var(--current-font-size) * var(--line-height) +
-    var(--upcoming-font-size) * var(--line-height) * 2 +
-    var(--line-gap) * 2
-  );
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  /* Height is set dynamically via inline style based on max_lines */
 }
 
-/* Individual karaoke line */
+/* Individual karaoke line with transform-based positioning and scaling */
 .karaoke-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  white-space: nowrap;
+  font-size: var(--base-font-size);
+  line-height: var(--line-height);
+  /* Transform is set via inline style: translateY() scale() */
+  transform-origin: center center;
+  /* No CSS transitions - dioxus-motion handles animations */
+}
+
+/* Wrapper for current line text (enables animation restart via key) */
+.karaoke-text-wrapper {
   position: relative;
   display: inline-block;
-  white-space: nowrap;
-  transition: opacity 0.3s ease;
 }
 
+/* Current line styling */
 .karaoke-line.current {
-  opacity: 1;
-  font-size: var(--current-font-size);
-  line-height: var(--line-height);
+  /* opacity is set via inline style for smooth animation */
 }
 
+/* Upcoming lines styling */
 .karaoke-line.upcoming {
-  opacity: 0.5;
-  font-size: var(--upcoming-font-size);
-  line-height: var(--line-height);
+  /* opacity is set via inline style for smooth animation */
 }
 
 /* Karaoke text animation */

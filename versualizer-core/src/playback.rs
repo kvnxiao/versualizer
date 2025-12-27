@@ -1,3 +1,4 @@
+use crate::time::DurationExt;
 use std::time::{Duration, Instant};
 
 /// Current playback state from the music player
@@ -128,14 +129,12 @@ impl TrackInfo {
         }
     }
 
-    /// Get duration in seconds (for lyrics query)
+    /// Get duration in seconds (for lyrics query).
     ///
-    /// # Panics
-    ///
-    /// Panics if duration exceeds `u32::MAX` seconds (unlikely for audio tracks).
+    /// Saturates at `u32::MAX` (approximately 136 years), which is more than sufficient
+    /// for any audio track.
     #[must_use]
-    #[allow(clippy::cast_possible_truncation)]
-    pub const fn duration_secs(&self) -> u32 {
-        self.duration.as_secs() as u32
+    pub fn duration_secs(&self) -> u32 {
+        self.duration.as_secs_u32()
     }
 }
