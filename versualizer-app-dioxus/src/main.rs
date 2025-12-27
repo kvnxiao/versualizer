@@ -6,6 +6,7 @@ mod state;
 use crate::app::App;
 use crate::bridge::use_sync_engine_bridge;
 use crate::state::{KaraokeDisplayConfig, KaraokeState};
+use dioxus::desktop::tao::platform::windows::WindowBuilderExtWindows;
 use dioxus::desktop::{LogicalSize, WindowBuilder};
 use dioxus::prelude::*;
 use std::sync::Arc;
@@ -101,7 +102,8 @@ fn main() {
 
     let dioxus_config = dioxus::desktop::Config::default()
         .with_window(window)
-        .with_custom_head(custom_head);
+        .with_custom_head(custom_head)
+        .with_disable_context_menu(true);
 
     // Create display config from loaded config
     let display_config = KaraokeDisplayConfig {
