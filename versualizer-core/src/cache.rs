@@ -1,4 +1,4 @@
-use crate::error::{Result, VersualizerError};
+use crate::error::{CoreError, Result};
 use crate::lrc::LrcFile;
 use crate::provider::LyricsResult;
 use chrono::{DateTime, Utc};
@@ -9,7 +9,7 @@ use tracing::{debug, info};
 
 const LOG_TARGET: &str = "versualizer::cache";
 
-const SCHEMA_SQL: &str = r#"
+const SCHEMA_SQL: &str = r"
 -- Core lyrics storage (source-agnostic)
 CREATE TABLE IF NOT EXISTS lyrics (
     id INTEGER PRIMARY KEY,
@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS track_id_mapping (
 CREATE INDEX IF NOT EXISTS idx_lyrics_artist_track ON lyrics(artist, track);
 CREATE INDEX IF NOT EXISTS idx_mapping_provider ON track_id_mapping(provider, provider_track_id);
 CREATE INDEX IF NOT EXISTS idx_lyrics_provider_id ON lyrics(provider, provider_id);
-"#;
+";
 
 /// Cached lyrics entry
 #[derive(Debug, Clone)]
@@ -63,31 +63,32 @@ pub enum LyricsType {
 }
 
 impl LyricsType {
-    fn as_str(&self) -> &'static str {
+    const fn as_str(self) -> &'static str {
         match self {
-            LyricsType::Synced => "synced",
-            LyricsType::Unsynced => "unsynced",
+            Self::Synced => "synced",
+            Self::Unsynced => "unsynced",
         }
     }
 
     fn from_str(s: &str) -> Option<Self> {
         match s {
-            "synced" => Some(LyricsType::Synced),
-            "unsynced" => Some(LyricsType::Unsynced),
+            "synced" => Some(Self::Synced),
+            "unsynced" => Some(Self::Unsynced),
             _ => None,
         }
     }
 }
 
 impl CachedLyrics {
-    /// Convert cached content to LyricsResult
+    /// Convert cached content to `LyricsResult`
+    #[must_use] 
     pub fn to_lyrics_result(&self) -> LyricsResult {
         match self.lyrics_type {
             LyricsType::Synced => {
-                match LrcFile::parse(&self.content) {
-                    Ok(lrc) => LyricsResult::Synced(lrc),
-                    Err(_) => LyricsResult::Unsynced(self.content.clone()),
-                }
+                LrcFile::parse(&self.content).map_or_else(
+                    |_| LyricsResult::Unsynced(self.content.clone()),
+                    LyricsResult::Synced,
+                )
             }
             LyricsType::Unsynced => LyricsResult::Unsynced(self.content.clone()),
         }
@@ -110,12 +111,20 @@ pub struct LyricsCache {
 
 impl LyricsCache {
     /// Create a new cache at the default location
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the cache database cannot be created or opened.
     pub async fn new() -> Result<Self> {
         let cache_path = crate::paths::lyrics_cache_db_path();
         Self::open(&cache_path).await
     }
 
     /// Open a cache at a specific path
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database cannot be opened or initialized.
     pub async fn open(path: &Path) -> Result<Self> {
         info!(target: LOG_TARGET, "Opening lyrics cache database at {:?}", path);
 
@@ -140,6 +149,10 @@ impl LyricsCache {
     }
 
     /// Fast lookup by provider track ID (e.g., Spotify track ID)
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database query fails.
     pub async fn get_by_provider_id(
         &self,
         provider: &str,
@@ -156,13 +169,13 @@ impl LyricsCache {
         self.conn
             .call(move |conn| {
                 let mut stmt = conn.prepare_cached(
-                    r#"
+                    r"
                     SELECT l.id, l.artist, l.track, l.album, l.duration_ms,
                            l.provider, l.provider_id, l.lyrics_type, l.content, l.fetched_at
                     FROM lyrics l
                     INNER JOIN track_id_mapping m ON l.id = m.lyrics_id
                     WHERE m.provider = ?1 AND m.provider_track_id = ?2
-                "#,
+                ",
                 )?;
 
                 let result = stmt
@@ -191,6 +204,10 @@ impl LyricsCache {
     }
 
     /// Fallback lookup by metadata (when source ID not cached)
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database query fails.
     pub async fn get_by_metadata(
         &self,
         artist: &str,
@@ -199,18 +216,18 @@ impl LyricsCache {
     ) -> Result<Option<CachedLyrics>> {
         let artist = artist.to_lowercase();
         let track = track.to_lowercase();
-        let album = album.map(|s| s.to_lowercase());
+        let album = album.map(str::to_lowercase);
 
         self.conn
             .call(move |conn| {
                 let result = if let Some(album) = album {
                     let mut stmt = conn.prepare_cached(
-                        r#"
+                        r"
                         SELECT id, artist, track, album, duration_ms,
                                provider, provider_id, lyrics_type, content, fetched_at
                         FROM lyrics
                         WHERE LOWER(artist) = ?1 AND LOWER(track) = ?2 AND LOWER(album) = ?3
-                    "#,
+                    ",
                     )?;
 
                     stmt.query_row(rusqlite::params![artist, track, album], |row| {
@@ -232,14 +249,14 @@ impl LyricsCache {
                     .optional()?
                 } else {
                     let mut stmt = conn.prepare_cached(
-                        r#"
+                        r"
                         SELECT id, artist, track, album, duration_ms,
                                provider, provider_id, lyrics_type, content, fetched_at
                         FROM lyrics
                         WHERE LOWER(artist) = ?1 AND LOWER(track) = ?2
                         ORDER BY fetched_at DESC
                         LIMIT 1
-                    "#,
+                    ",
                     )?;
 
                     stmt.query_row(rusqlite::params![artist, track], |row| {
@@ -268,6 +285,10 @@ impl LyricsCache {
     }
 
     /// Store lyrics and create mapping to provider track ID
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the lyrics cannot be stored or if the lyrics result is `NotFound`.
     pub async fn store(
         &self,
         provider: &str,
@@ -296,9 +317,9 @@ impl LyricsCache {
             }
             LyricsResult::Unsynced(text) => (LyricsType::Unsynced, text.clone()),
             LyricsResult::NotFound => {
-                return Err(VersualizerError::LyricsNotFound {
+                return Err(CoreError::LyricsNotFound {
                     track: metadata.track.clone(),
-                    artist: metadata.artist.clone(),
+                    artist: metadata.artist,
                 });
             }
         };
@@ -310,7 +331,7 @@ impl LyricsCache {
             .call(move |conn| {
                 // Insert or update lyrics entry
                 conn.execute(
-                    r#"
+                    r"
                     INSERT INTO lyrics (artist, track, album, duration_ms, provider, provider_id, lyrics_type, content, fetched_at)
                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
                     ON CONFLICT(artist, track, album) DO UPDATE SET
@@ -319,7 +340,7 @@ impl LyricsCache {
                         lyrics_type = excluded.lyrics_type,
                         content = excluded.content,
                         fetched_at = excluded.fetched_at
-                "#,
+                ",
                     rusqlite::params![
                         metadata.artist,
                         metadata.track,
@@ -337,13 +358,13 @@ impl LyricsCache {
 
                 // Create mapping from provider track ID to lyrics
                 conn.execute(
-                    r#"
+                    r"
                     INSERT INTO track_id_mapping (provider, provider_track_id, lyrics_id, created_at)
                     VALUES (?1, ?2, ?3, ?4)
                     ON CONFLICT(provider, provider_track_id) DO UPDATE SET
                         lyrics_id = excluded.lyrics_id,
                         created_at = excluded.created_at
-                "#,
+                ",
                     rusqlite::params![provider, provider_track_id, lyrics_id, now],
                 )?;
 
@@ -354,8 +375,12 @@ impl LyricsCache {
     }
 
     /// Delete old cache entries beyond TTL
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database cleanup fails.
     pub async fn cleanup(&self, ttl_days: u32) -> Result<usize> {
-        let cutoff = Utc::now().timestamp() - (ttl_days as i64 * 24 * 60 * 60);
+        let cutoff = Utc::now().timestamp() - (i64::from(ttl_days) * 24 * 60 * 60);
 
         self.conn
             .call(move |conn| {
@@ -370,6 +395,10 @@ impl LyricsCache {
     }
 
     /// Checkpoint WAL for clean shutdown
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the WAL checkpoint fails.
     pub async fn checkpoint(&self) -> Result<()> {
         self.conn
             .call(|conn| {
@@ -381,22 +410,24 @@ impl LyricsCache {
     }
 }
 
-/// Serialize an LrcFile back to LRC format for storage
+/// Serialize an `LrcFile` back to LRC format for storage
 fn serialize_lrc(lrc: &LrcFile) -> String {
+    use std::fmt::Write;
+
     let mut output = String::new();
 
     // Write metadata
     if let Some(ref title) = lrc.metadata.title {
-        output.push_str(&format!("[ti:{}]\n", title));
+        let _ = writeln!(output, "[ti:{title}]");
     }
     if let Some(ref artist) = lrc.metadata.artist {
-        output.push_str(&format!("[ar:{}]\n", artist));
+        let _ = writeln!(output, "[ar:{artist}]");
     }
     if let Some(ref album) = lrc.metadata.album {
-        output.push_str(&format!("[al:{}]\n", album));
+        let _ = writeln!(output, "[al:{album}]");
     }
     if lrc.metadata.offset != 0 {
-        output.push_str(&format!("[offset:{}]\n", lrc.metadata.offset));
+        let _ = writeln!(output, "[offset:{}]", lrc.metadata.offset);
     }
 
     // Write lines
@@ -405,14 +436,14 @@ fn serialize_lrc(lrc: &LrcFile) -> String {
 
         if let Some(ref words) = line.words {
             // Enhanced LRC format
-            output.push_str(&format!("[{}]", timestamp));
+            let _ = write!(output, "[{timestamp}]");
             for word in words {
-                output.push_str(&format!(" <{}> {}", format_timestamp(word.start_time), word.text));
+                let _ = write!(output, " <{}> {}", format_timestamp(word.start_time), word.text);
             }
             output.push('\n');
         } else {
             // Simple LRC format
-            output.push_str(&format!("[{}]{}\n", timestamp, line.text));
+            let _ = writeln!(output, "[{timestamp}]{}", line.text);
         }
     }
 
@@ -426,5 +457,5 @@ fn format_timestamp(duration: std::time::Duration) -> String {
     let seconds = total_secs % 60;
     let hundredths = duration.subsec_millis() / 10;
 
-    format!("{:02}:{:02}.{:02}", minutes, seconds, hundredths)
+    format!("{minutes:02}:{seconds:02}.{hundredths:02}")
 }

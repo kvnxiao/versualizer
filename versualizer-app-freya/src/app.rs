@@ -1,9 +1,8 @@
 use crate::state::{AppChannel, AppState};
-use freya::animation::*;
+use freya::animation::{use_animation_with_dependencies, AnimNum, Function, OnChange, OnCreation};
 use freya::prelude::*;
 use freya_radio::prelude::*;
 use std::borrow::Cow;
-use tracing::info;
 
 /// Type alias for RGB color used in karaoke lines
 pub type KaraokeColor = (u8, u8, u8);
@@ -109,7 +108,7 @@ impl Render for KaraokeLineComponent {
     }
 }
 
-/// Main application component struct - holds the RadioStation from main.rs
+/// Main application component struct - holds the `RadioStation` from main.rs
 pub struct App {
     pub radio_station: RadioStation<AppState, AppChannel>,
 }

@@ -1,26 +1,14 @@
+use crate::error::SpotifyError;
 use crate::oauth::SpotifyOAuth;
 use rspotify::prelude::*;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use thiserror::Error;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, warn};
 use versualizer_core::{PlaybackState, SyncEngine, TrackInfo};
 
 const LOG_TARGET_POLLER: &str = "versualizer::spotify::poller";
 const LOG_TARGET_FETCHER: &str = "versualizer::lyrics::fetcher";
-
-#[derive(Debug, Error)]
-pub enum PollerError {
-    #[error("Spotify API error: {0}")]
-    SpotifyApi(#[from] rspotify::ClientError),
-
-    #[error("OAuth error: {0}")]
-    OAuth(#[from] crate::oauth::OAuthError),
-
-    #[error("Poller stopped")]
-    Stopped,
-}
 
 /// Spotify playback state poller
 pub struct SpotifyPoller {
@@ -46,6 +34,7 @@ impl SpotifyPoller {
     }
 
     /// Get a clone of the cancellation token
+    #[must_use] 
     pub fn cancel_token(&self) -> CancellationToken {
         self.cancel_token.clone()
     }
@@ -56,6 +45,7 @@ impl SpotifyPoller {
     }
 
     /// Start polling in a background task
+    #[must_use] 
     pub fn start(self: Arc<Self>) -> tokio::task::JoinHandle<()> {
         tokio::spawn(async move {
             self.run().await;
@@ -71,13 +61,13 @@ impl SpotifyPoller {
 
         loop {
             tokio::select! {
-                _ = self.cancel_token.cancelled() => {
+                () = self.cancel_token.cancelled() => {
                     info!(target: LOG_TARGET_POLLER, "Poller shutting down gracefully");
                     break;
                 }
-                _ = tokio::time::sleep(self.poll_interval) => {
+                () = tokio::time::sleep(self.poll_interval) => {
                     match self.poll_once().await {
-                        Ok(_) => {
+                        Ok(()) => {
                             consecutive_errors = 0;
                         }
                         Err(e) => {
@@ -85,8 +75,9 @@ impl SpotifyPoller {
                             warn!(target: LOG_TARGET_POLLER, "Poll error (attempt {}): {}", consecutive_errors, e);
 
                             // Exponential backoff
+                            #[allow(clippy::cast_possible_truncation)]
                             let backoff = Duration::from_millis(
-                                (100 * (2_u64.pow(consecutive_errors.min(10)))).min(max_backoff.as_millis() as u64)
+                                (100 * (2_u64.pow(consecutive_errors.min(10)))).min(max_backoff.as_secs() * 1000)
                             );
 
                             if consecutive_errors >= 5 {
@@ -96,7 +87,7 @@ impl SpotifyPoller {
                             tokio::time::sleep(backoff).await;
 
                             // Try to refresh token on auth errors
-                            if matches!(e, PollerError::SpotifyApi(_)) {
+                            if matches!(e, SpotifyError::Api(_)) {
                                 if let Err(refresh_err) = self.oauth.refresh_token().await {
                                     error!(target: LOG_TARGET_POLLER, "Token refresh failed: {}", refresh_err);
                                 }
@@ -109,7 +100,10 @@ impl SpotifyPoller {
     }
 
     /// Poll Spotify for current playback state
-    async fn poll_once(&self) -> Result<(), PollerError> {
+    async fn poll_once(&self) -> Result<(), SpotifyError> {
+        // Proactively refresh token if it expires within 60 seconds
+        self.oauth.ensure_token_fresh().await?;
+
         let request_start = Instant::now();
 
         let playback = self
@@ -182,8 +176,7 @@ impl SpotifyPoller {
                 let latency_compensation = request_latency / 2;
                 let position = context
                     .progress
-                    .map(|p| p.to_std().unwrap_or(Duration::ZERO) + latency_compensation)
-                    .unwrap_or(Duration::ZERO);
+                    .map_or(Duration::ZERO, |p| p.to_std().unwrap_or(Duration::ZERO) + latency_compensation);
 
                 PlaybackState::new(context.is_playing, track_info, position, duration)
             }
@@ -232,11 +225,13 @@ impl LyricsFetcher {
     }
 
     /// Get a clone of the cancellation token
+    #[must_use] 
     pub fn cancel_token(&self) -> CancellationToken {
         self.cancel_token.clone()
     }
 
     /// Start the lyrics fetcher in a background task
+    #[must_use] 
     pub fn start(self: Arc<Self>) -> tokio::task::JoinHandle<()> {
         tokio::spawn(async move {
             self.run().await;
@@ -251,24 +246,22 @@ impl LyricsFetcher {
 
         loop {
             tokio::select! {
-                _ = self.cancel_token.cancelled() => {
+                () = self.cancel_token.cancelled() => {
                     info!(target: LOG_TARGET_FETCHER, "Lyrics fetcher shutting down");
                     break;
                 }
                 event = rx.recv() => {
                     match event {
-                        Ok(versualizer_core::SyncEvent::TrackChanged { track, .. }) |
-                        Ok(versualizer_core::SyncEvent::PlaybackStarted { track, .. }) => {
+                        Ok(versualizer_core::SyncEvent::TrackChanged { track, .. } |
+versualizer_core::SyncEvent::PlaybackStarted { track, .. }) => {
                             self.fetch_lyrics_for_track(&track).await;
                         }
                         Err(tokio::sync::broadcast::error::RecvError::Closed) => {
                             break;
                         }
-                        Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
-                            // Missed some events, continue
-                            continue;
+                        _ => {
+                            // Missed some events (Lagged) or other event types, continue
                         }
-                        _ => {}
                     }
                 }
             }
@@ -316,7 +309,8 @@ impl LyricsFetcher {
                                 artist: track.artist.clone(),
                                 track: track.name.clone(),
                                 album: Some(track.album.clone()),
-                                duration_ms: Some(track.duration.as_millis() as i64),
+                                #[allow(clippy::cast_possible_truncation)]
+                            duration_ms: Some(track.duration.as_millis() as i64),
                             };
 
                             if let Err(e) = self

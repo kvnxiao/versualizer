@@ -61,6 +61,7 @@ pub struct SyncEngine {
 
 impl SyncEngine {
     /// Create a new sync engine
+    #[must_use] 
     pub fn new() -> Arc<Self> {
         let (event_tx, _) = broadcast::channel(64);
 
@@ -90,16 +91,15 @@ impl SyncEngine {
 
         // Emit appropriate events
         if track_changed {
-            if let Some(ref track) = new_state.track {
-                // Clear lyrics for new track
-                inner.lyrics = None;
+            // Clear lyrics for new/changed track
+            inner.lyrics = None;
 
+            if let Some(ref track) = new_state.track {
                 let _ = self.event_tx.send(SyncEvent::TrackChanged {
                     track: track.clone(),
                     position: new_state.position,
                 });
             } else {
-                inner.lyrics = None;
                 let _ = self.event_tx.send(SyncEvent::PlaybackStopped);
             }
         } else if playback_changed {
@@ -135,15 +135,13 @@ impl SyncEngine {
 
     /// Set lyrics for the current track
     pub async fn set_lyrics(&self, lyrics: LrcFile) {
-        let mut inner = self.inner.write().await;
-        inner.lyrics = Some(lyrics.clone());
+        self.inner.write().await.lyrics = Some(lyrics.clone());
         let _ = self.event_tx.send(SyncEvent::LyricsLoaded { lyrics });
     }
 
     /// Mark that no lyrics were found
     pub async fn set_no_lyrics(&self) {
-        let mut inner = self.inner.write().await;
-        inner.lyrics = None;
+        self.inner.write().await.lyrics = None;
         let _ = self.event_tx.send(SyncEvent::LyricsNotFound);
     }
 

@@ -1,4 +1,4 @@
-use crate::error::{Result, VersualizerError};
+use crate::error::{CoreError, Result};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
@@ -35,7 +35,7 @@ fn default_redirect_uri() -> String {
     "http://127.0.0.1:8888/callback".into()
 }
 
-fn default_poll_interval() -> u64 {
+const fn default_poll_interval() -> u64 {
     1000
 }
 
@@ -54,11 +54,11 @@ fn default_providers() -> Vec<LyricsProviderType> {
     vec![LyricsProviderType::Lrclib]
 }
 
-fn default_true() -> bool {
+const fn default_true() -> bool {
     true
 }
 
-fn default_cache_ttl() -> u32 {
+const fn default_cache_ttl() -> u32 {
     30
 }
 
@@ -89,7 +89,7 @@ pub struct UiConfig {
     pub window: WindowConfig,
 }
 
-fn default_fill_mode() -> FillMode {
+const fn default_fill_mode() -> FillMode {
     FillMode::Gradient
 }
 
@@ -129,7 +129,7 @@ fn default_font_family() -> String {
     "Arial".to_string()
 }
 
-fn default_font_size() -> f32 {
+const fn default_font_size() -> f32 {
     24.0
 }
 
@@ -172,19 +172,19 @@ fn default_vertical_position() -> String {
     "bottom".to_string()
 }
 
-fn default_margin() -> f32 {
+const fn default_margin() -> f32 {
     20.0
 }
 
-fn default_margin_vertical() -> f32 {
+const fn default_margin_vertical() -> f32 {
     10.0
 }
 
-fn default_max_lines() -> usize {
+const fn default_max_lines() -> usize {
     3
 }
 
-fn default_current_line_scale() -> f32 {
+const fn default_current_line_scale() -> f32 {
     1.2
 }
 
@@ -211,11 +211,11 @@ pub struct AnimationConfig {
     pub easing: String,
 }
 
-fn default_frame_rate() -> u32 {
+const fn default_frame_rate() -> u32 {
     60
 }
 
-fn default_transition_ms() -> u32 {
+const fn default_transition_ms() -> u32 {
     200
 }
 
@@ -245,15 +245,15 @@ pub struct WindowConfig {
     pub start_y: i32,
 }
 
-fn default_window_width() -> u32 {
+const fn default_window_width() -> u32 {
     800
 }
 
-fn default_window_height() -> u32 {
+const fn default_window_height() -> u32 {
     200
 }
 
-fn default_window_pos() -> i32 {
+const fn default_window_pos() -> i32 {
     -1 // centered
 }
 
@@ -293,7 +293,7 @@ pub struct ErrorHandlingConfig {
     pub show_error_notifications: bool,
 }
 
-fn default_max_retries() -> u32 {
+const fn default_max_retries() -> u32 {
     3
 }
 
@@ -362,16 +362,22 @@ impl Default for BehaviorConfig {
 
 impl Config {
     /// Get the configuration directory path (~/.config/versualizer/)
+    #[must_use] 
     pub fn config_dir() -> PathBuf {
         crate::paths::config_dir()
     }
 
     /// Get the config file path (~/.config/versualizer/config.toml)
+    #[must_use] 
     pub fn config_path() -> PathBuf {
         crate::paths::config_path()
     }
 
     /// Load config from file or create template on first run
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the config file cannot be read, parsed, or if required fields are missing.
     pub fn load_or_create() -> Result<Self> {
         let config_path = Self::config_path();
 
@@ -384,20 +390,20 @@ impl Config {
             // Write template config
             fs::write(&config_path, CONFIG_TEMPLATE)?;
 
-            return Err(VersualizerError::ConfigNotFound { path: config_path });
+            return Err(CoreError::ConfigNotFound { path: config_path });
         }
 
         let content = fs::read_to_string(&config_path)?;
-        let config: Config = toml::from_str(&content)?;
+        let config: Self = toml::from_str(&content)?;
 
         // Validate required fields
         if config.spotify.client_id.is_empty() {
-            return Err(VersualizerError::ConfigMissingField {
+            return Err(CoreError::ConfigMissingField {
                 field: "spotify.client_id".to_string(),
             });
         }
         if config.spotify.client_secret.is_empty() {
-            return Err(VersualizerError::ConfigMissingField {
+            return Err(CoreError::ConfigMissingField {
                 field: "spotify.client_secret".to_string(),
             });
         }
@@ -406,6 +412,7 @@ impl Config {
     }
 
     /// Parse a hex color string to RGB tuple
+    #[must_use] 
     pub fn parse_color(hex: &str) -> Option<(u8, u8, u8, u8)> {
         let hex = hex.trim_start_matches('#');
         match hex.len() {

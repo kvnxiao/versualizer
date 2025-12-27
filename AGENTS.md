@@ -17,7 +17,7 @@ This document contains essential best practices and guidelines for AI agents and
 9. [Documentation and Research Tools](#documentation-and-research-tools)
 10. [UI Libraries](#ui-libraries)
 11. [Dependency Management](#dependency-management)
-12. [Multi-Crate Workspaces](#multi-crate-workspaces)
+12. [Multi-Crate Workspaces](#multi-crate-workspaces)s
 
 ---
 
@@ -32,13 +32,13 @@ Always run Clippy with the strictest settings to catch potential issues early.
 # Deny all warnings - treat them as errors
 all = "deny"
 pedantic = "deny"
-nursery = "warn"
-cargo = "warn"
-
-# Additional restriction lints
+nursery = "deny"
+cargo = "deny"
 unwrap_used = "deny"
 expect_used = "deny"
 panic = "deny"
+
+# Unimplemented items can be left as warnings
 todo = "warn"
 unimplemented = "warn"
 ```

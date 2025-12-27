@@ -9,7 +9,13 @@
       "Bash(cargo test:*)",
       "Bash(cd:*)",
       "Bash(cat:*)",
-      "Bash(wc:*)"
+      "Bash(wc:*)",
+      "Bash(cargo build:*)",
+      "Bash(find:*)",
+      "Bash(cargo clippy:*)",
+      "Bash(grep:*)",
+      "Bash(head:*)",
+      "Bash(ls:*)"
     ]
   }
 }

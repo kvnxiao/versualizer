@@ -2,6 +2,12 @@
 name = "versualizer-spotify"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+description.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [dependencies]
 versualizer-core = { path = "../versualizer-core" }
@@ -9,6 +15,8 @@ tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 reqwest = { workspace = true }
+reqwest-middleware = { workspace = true }
+reqwest-retry = { workspace = true }
 rspotify = { workspace = true }
 thiserror = { workspace = true }
 anyhow = { workspace = true }
@@ -21,3 +29,7 @@ tokio-util = { workspace = true }
 url = { workspace = true }
 open = { workspace = true }
 axum = { workspace = true }
+futures = "0.3"
+
+[lints]
+workspace = true

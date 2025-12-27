@@ -12,13 +12,14 @@ use std::time::Duration;
 use tracing::{error, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 use versualizer_core::config::LyricsProviderType;
-use versualizer_core::providers::{LrclibProvider, SpotifyLyricsProvider};
+use versualizer_core::providers::LrclibProvider;
 use versualizer_core::{Config, LyricsCache, LyricsProvider, SyncEngine, SyncEvent};
-use versualizer_spotify::{LyricsFetcher, SpotifyOAuth, SpotifyPoller};
+use versualizer_spotify::{LyricsFetcher, SpotifyLyricsProvider, SpotifyOAuth, SpotifyPoller};
 
 const LOG_TARGET: &str = "versualizer::app";
 const LOG_TARGET_SYNC: &str = "versualizer::sync::events";
 
+#[allow(clippy::too_many_lines)]
 fn main() {
     // Initialize logging
     tracing_subscriber::registry()
@@ -30,13 +31,19 @@ fn main() {
     let config = match Config::load_or_create() {
         Ok(config) => config,
         Err(e) => {
-            eprintln!("{}", e);
+            eprintln!("{e}");
             std::process::exit(1);
         }
     };
 
     // Create tokio runtime for background tasks
-    let runtime = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
+    let runtime = match tokio::runtime::Runtime::new() {
+        Ok(rt) => rt,
+        Err(e) => {
+            eprintln!("Failed to create tokio runtime: {e}");
+            std::process::exit(1);
+        }
+    };
 
     // Initialize sync engine
     let sync_engine = SyncEngine::new();
@@ -61,21 +68,36 @@ fn main() {
             match provider_type {
                 LyricsProviderType::Lrclib => {
                     info!(target: LOG_TARGET, "Initializing LRCLIB provider");
-                    Some(Box::new(LrclibProvider::new()))
-                }
-                LyricsProviderType::SpotifyLyrics => {
-                    if let Some(sp_dc) = &config.spotify.sp_dc {
-                        if !sp_dc.is_empty() {
-                            info!(target: LOG_TARGET, "Initializing Spotify lyrics provider (sp_dc configured)");
-                            Some(Box::new(SpotifyLyricsProvider::new(sp_dc)))
-                        } else {
-                            info!(target: LOG_TARGET, "Skipping Spotify lyrics provider: sp_dc is empty");
+                    match LrclibProvider::new() {
+                        Ok(provider) => Some(Box::new(provider)),
+                        Err(e) => {
+                            error!(target: LOG_TARGET, "Failed to create LRCLIB provider: {}", e);
                             None
                         }
-                    } else {
-                        info!(target: LOG_TARGET, "Skipping Spotify lyrics provider: sp_dc not configured");
-                        None
                     }
+                }
+                LyricsProviderType::SpotifyLyrics => {
+                    config.spotify.sp_dc.as_ref().map_or_else(
+                        || {
+                            info!(target: LOG_TARGET, "Skipping Spotify lyrics provider: sp_dc not configured");
+                            None
+                        },
+                        |sp_dc| {
+                            if sp_dc.is_empty() {
+                                info!(target: LOG_TARGET, "Skipping Spotify lyrics provider: sp_dc is empty");
+                                None
+                            } else {
+                                info!(target: LOG_TARGET, "Initializing Spotify lyrics provider (sp_dc configured)");
+                                match SpotifyLyricsProvider::new(sp_dc) {
+                                    Ok(provider) => Some(Box::new(provider) as Box<dyn LyricsProvider>),
+                                    Err(e) => {
+                                        error!(target: LOG_TARGET, "Failed to create Spotify lyrics provider: {}", e);
+                                        None
+                                    }
+                                }
+                            }
+                        },
+                    )
                 }
             }
         })
@@ -87,7 +109,7 @@ fn main() {
     // Create lyrics fetcher
     let lyrics_fetcher = Arc::new(LyricsFetcher::new(
         sync_engine.clone(),
-        cache.clone(),
+        cache,
         providers,
     ));
 
@@ -111,7 +133,7 @@ fn main() {
     // Spawn background tasks
     runtime.spawn(start_spotify_poller(config.clone(), sync_engine.clone()));
     runtime.spawn(start_lyrics_fetcher(lyrics_fetcher));
-    runtime.spawn(log_sync_events(sync_engine.clone()));
+    runtime.spawn(log_sync_events(sync_engine));
 
     // Launch the Freya application
     launch(
@@ -134,10 +156,10 @@ fn main() {
                                 let state = radio_station.read();
                                 if let Some(ref lyrics) = state.lyrics {
                                     let new_idx = lyrics.current_line_index(position);
-                                    if new_idx != state.current_line_index {
-                                        Some((new_idx, lyrics.clone()))
-                                    } else {
+                                    if new_idx == state.current_line_index {
                                         None
+                                    } else {
+                                        Some((new_idx, lyrics.clone()))
                                     }
                                 } else {
                                     None
@@ -153,11 +175,13 @@ fn main() {
                                     let next_start = lyrics
                                         .lines
                                         .get(idx + 1)
-                                        .map(|l| l.start_time)
-                                        .unwrap_or(state.line_start_time + Duration::from_secs(5));
-                                    state.line_duration_ms = next_start
-                                        .saturating_sub(state.line_start_time)
-                                        .as_millis() as u64;
+                                        .map_or(state.line_start_time + Duration::from_secs(5), |l| l.start_time);
+                                    #[allow(clippy::cast_possible_truncation)]
+                                    {
+                                        state.line_duration_ms = next_start
+                                            .saturating_sub(state.line_start_time)
+                                            .as_millis() as u64;
+                                    }
                                 }
                             }
                             // Animation handles smooth interpolation between line changes
@@ -203,8 +227,8 @@ fn main() {
                 WindowConfig::new(FpRender::from_render(app::App { radio_station }))
                     .with_title("Versualizer")
                     .with_size(
-                        config.ui.window.width as f64,
-                        config.ui.window.height as f64,
+                        f64::from(config.ui.window.width),
+                        f64::from(config.ui.window.height),
                     )
                     .with_background(Color::TRANSPARENT)
                     .with_decorations(false)

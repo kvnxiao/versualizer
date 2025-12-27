@@ -2,7 +2,7 @@ use freya_radio::prelude::*;
 use std::time::Duration;
 use versualizer_core::LrcFile;
 
-/// Global app state managed by RadioStation
+/// Global app state managed by `RadioStation`
 #[derive(Default)]
 pub struct AppState {
     /// Current lyrics (if loaded)

@@ -37,7 +37,11 @@ pub struct LrcWord {
 }
 
 impl LrcFile {
-    /// Parse an LRC string into an LrcFile
+    /// Parse an LRC string into an `LrcFile`
+    ///
+    /// # Errors
+    ///
+    /// This function currently does not return errors but may in future versions.
     pub fn parse(input: &str) -> Result<Self> {
         let mut metadata = LrcMetadata::default();
         let mut lines = Vec::new();
@@ -90,10 +94,11 @@ impl LrcFile {
         // Sort lines by start time
         lines.sort_by_key(|l| l.start_time);
 
-        Ok(LrcFile { metadata, lines })
+        Ok(Self { metadata, lines })
     }
 
     /// Find the current line for a given playback position
+    #[must_use] 
     pub fn current_line(&self, position: Duration) -> Option<&LrcLine> {
         // Find the last line that started before or at the current position
         self.lines
@@ -103,6 +108,7 @@ impl LrcFile {
     }
 
     /// Find the current line index for a given playback position
+    #[must_use] 
     pub fn current_line_index(&self, position: Duration) -> Option<usize> {
         self.lines
             .iter()
@@ -113,6 +119,7 @@ impl LrcFile {
     }
 
     /// Get lines around the current position for display
+    #[must_use] 
     pub fn visible_lines(&self, position: Duration, before: usize, after: usize) -> Vec<&LrcLine> {
         let current_idx = self.current_line_index(position).unwrap_or(0);
 
@@ -125,6 +132,8 @@ impl LrcFile {
 
 impl LrcLine {
     /// Calculate progress through this line (0.0 to 1.0) based on word timing or duration estimate
+    #[must_use]
+    #[allow(clippy::cast_precision_loss)]
     pub fn progress(&self, position: Duration, next_line_start: Option<Duration>) -> f32 {
         if position < self.start_time {
             return 0.0;
@@ -171,6 +180,8 @@ impl LrcLine {
     }
 
     /// Get word progress for character-level fill mode
+    #[must_use]
+    #[allow(clippy::cast_precision_loss)]
     pub fn word_progress(&self, position: Duration, char_index: usize) -> f32 {
         let total_chars = self.text.chars().count();
         if total_chars == 0 {
@@ -254,6 +265,7 @@ fn parse_id_tag(line: &str) -> Option<(String, String)> {
 }
 
 /// Parse a duration string like "mm:ss" or "mm:ss.xx"
+#[allow(clippy::cast_precision_loss)]
 fn parse_duration_tag(s: &str) -> Option<Duration> {
     let parts: Vec<&str> = s.split(':').collect();
     if parts.len() != 2 {
@@ -263,7 +275,7 @@ fn parse_duration_tag(s: &str) -> Option<Duration> {
     let minutes: u64 = parts[0].parse().ok()?;
     let seconds: f64 = parts[1].parse().ok()?;
 
-    Some(Duration::from_secs_f64(minutes as f64 * 60.0 + seconds))
+    Some(Duration::from_secs_f64((minutes as f64).mul_add(60.0, seconds)))
 }
 
 /// Parse a lyric line like [00:12.34]Hello world or [00:12.34][00:15.67]Same lyrics
@@ -306,9 +318,7 @@ fn parse_lyric_line(line: &str) -> Option<Vec<LrcLine>> {
             text: if words.is_some() {
                 // Reconstruct text from words for enhanced format
                 words
-                    .as_ref()
-                    .map(|w| w.iter().map(|word| word.text.as_str()).collect::<Vec<_>>().join(" "))
-                    .unwrap_or_else(|| text.to_string())
+                    .as_ref().map_or_else(|| text.to_string(), |w| w.iter().map(|word| word.text.as_str()).collect::<Vec<_>>().join(" "))
             } else {
                 text.to_string()
             },
@@ -320,6 +330,7 @@ fn parse_lyric_line(line: &str) -> Option<Vec<LrcLine>> {
 }
 
 /// Parse a timestamp string like "00:12.34" or "00:12:34"
+#[allow(clippy::cast_precision_loss)]
 fn parse_timestamp(s: &str) -> Option<Duration> {
     // Format: [mm:ss.xx] or [mm:ss:xx] or [mm:ss]
     let s = s.trim();
@@ -331,16 +342,9 @@ fn parse_timestamp(s: &str) -> Option<Duration> {
         2 => {
             // mm:ss.xx or mm:ss
             let minutes: u64 = parts[0].parse().ok()?;
-            let seconds_str = parts[1];
+            let seconds: f64 = parts[1].parse().ok()?;
 
-            // Handle both . and : as decimal separator
-            let seconds: f64 = if seconds_str.contains('.') {
-                seconds_str.parse().ok()?
-            } else {
-                seconds_str.parse().ok()?
-            };
-
-            Some(Duration::from_secs_f64(minutes as f64 * 60.0 + seconds))
+            Some(Duration::from_secs_f64((minutes as f64).mul_add(60.0, seconds)))
         }
         3 => {
             // mm:ss:xx (hundredths)
@@ -369,31 +373,28 @@ fn parse_enhanced_words(text: &str) -> Option<Vec<LrcWord>> {
     while !remaining.is_empty() {
         // Look for timestamp
         if remaining.starts_with('<') {
-            if let Some(end) = remaining.find('>') {
-                let timestamp_str = &remaining[1..end];
-                if let Some(start_time) = parse_timestamp(timestamp_str) {
-                    remaining = &remaining[end + 1..];
-
-                    // Find the word (until next < or end)
-                    let word_end = remaining.find('<').unwrap_or(remaining.len());
-                    let word_text = remaining[..word_end].trim();
-
-                    if !word_text.is_empty() {
-                        words.push(LrcWord {
-                            start_time,
-                            end_time: None,
-                            text: word_text.to_string(),
-                        });
-                    }
-
-                    remaining = &remaining[word_end..];
-                } else {
-                    // Invalid timestamp, skip
-                    remaining = &remaining[end + 1..];
-                }
-            } else {
+            let Some(end) = remaining.find('>') else {
                 break;
+            };
+            let timestamp_str = &remaining[1..end];
+            remaining = &remaining[end + 1..];
+
+            if let Some(start_time) = parse_timestamp(timestamp_str) {
+                // Find the word (until next < or end)
+                let word_end = remaining.find('<').unwrap_or(remaining.len());
+                let word_text = remaining[..word_end].trim();
+
+                if !word_text.is_empty() {
+                    words.push(LrcWord {
+                        start_time,
+                        end_time: None,
+                        text: word_text.to_string(),
+                    });
+                }
+
+                remaining = &remaining[word_end..];
             }
+            // Invalid timestamp case: just continue (remaining already advanced)
         } else {
             // Skip non-timestamp content
             let next_timestamp = remaining.find('<').unwrap_or(remaining.len());
@@ -416,11 +417,12 @@ fn parse_enhanced_words(text: &str) -> Option<Vec<LrcWord>> {
 }
 
 /// Apply a millisecond offset to a duration (can be negative)
+#[allow(clippy::cast_sign_loss)]
 fn apply_offset(duration: Duration, offset_ms: i64) -> Duration {
     if offset_ms >= 0 {
         duration + Duration::from_millis(offset_ms as u64)
     } else {
-        duration.saturating_sub(Duration::from_millis((-offset_ms) as u64))
+        duration.saturating_sub(Duration::from_millis(offset_ms.unsigned_abs()))
     }
 }
 

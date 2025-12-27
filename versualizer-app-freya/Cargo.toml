@@ -2,6 +2,12 @@
 name = "versualizer-app-freya"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+description.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [[bin]]
 name = "versualizer"
@@ -24,3 +30,6 @@ tracing-subscriber = { workspace = true }
 directories = { workspace = true }
 global-hotkey = { workspace = true }
 tokio-util = { workspace = true }
+
+[lints]
+workspace = true

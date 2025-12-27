@@ -1,4 +1,4 @@
-use crate::error::VersualizerError;
+use crate::error::CoreError;
 use crate::lrc::LrcFile;
 use async_trait::async_trait;
 
@@ -30,18 +30,21 @@ impl LyricsQuery {
     }
 
     /// Set album name
+    #[must_use]
     pub fn with_album(mut self, album: impl Into<String>) -> Self {
         self.album_name = Some(album.into());
         self
     }
 
     /// Set duration
-    pub fn with_duration(mut self, duration_secs: u32) -> Self {
+    #[must_use] 
+    pub const fn with_duration(mut self, duration_secs: u32) -> Self {
         self.duration_secs = Some(duration_secs);
         self
     }
 
     /// Set Spotify track ID
+    #[must_use]
     pub fn with_spotify_id(mut self, id: impl Into<String>) -> Self {
         self.spotify_track_id = Some(id.into());
         self
@@ -70,31 +73,35 @@ pub struct FetchedLyrics {
 
 impl LyricsResult {
     /// Check if lyrics were found
-    pub fn is_found(&self) -> bool {
-        !matches!(self, LyricsResult::NotFound)
+    #[must_use] 
+    pub const fn is_found(&self) -> bool {
+        !matches!(self, Self::NotFound)
     }
 
     /// Check if lyrics are synced
-    pub fn is_synced(&self) -> bool {
-        matches!(self, LyricsResult::Synced(_))
+    #[must_use] 
+    pub const fn is_synced(&self) -> bool {
+        matches!(self, Self::Synced(_))
     }
 
-    /// Get as LrcFile if synced
-    pub fn as_synced(&self) -> Option<&LrcFile> {
+    /// Get as `LrcFile` if synced
+    #[must_use] 
+    pub const fn as_synced(&self) -> Option<&LrcFile> {
         match self {
-            LyricsResult::Synced(lrc) => Some(lrc),
+            Self::Synced(lrc) => Some(lrc),
             _ => None,
         }
     }
 
     /// Get text content regardless of type
+    #[must_use] 
     pub fn text(&self) -> Option<String> {
         match self {
-            LyricsResult::Synced(lrc) => {
+            Self::Synced(lrc) => {
                 Some(lrc.lines.iter().map(|l| l.text.as_str()).collect::<Vec<_>>().join("\n"))
             }
-            LyricsResult::Unsynced(text) => Some(text.clone()),
-            LyricsResult::NotFound => None,
+            Self::Unsynced(text) => Some(text.clone()),
+            Self::NotFound => None,
         }
     }
 }
@@ -106,5 +113,5 @@ pub trait LyricsProvider: Send + Sync {
     fn name(&self) -> &'static str;
 
     /// Fetch lyrics for a query
-    async fn fetch(&self, query: &LyricsQuery) -> Result<FetchedLyrics, VersualizerError>;
+    async fn fetch(&self, query: &LyricsQuery) -> Result<FetchedLyrics, CoreError>;
 }

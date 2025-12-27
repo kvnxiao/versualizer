@@ -1,41 +1,22 @@
-use axum::{
-    extract::Query,
-    response::Html,
-    routing::get,
-    Router,
-};
-use rspotify::{
-    prelude::*,
-    scopes, AuthCodeSpotify, Credentials, OAuth, Token,
-};
+use crate::error::SpotifyError;
+use axum::{extract::Query, response::Html, routing::get, Router};
+use rspotify::{prelude::*, scopes, AuthCodeSpotify, Credentials, OAuth, Token};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
-use thiserror::Error;
+use std::time::Duration;
 use tokio::sync::oneshot;
 use tracing::{debug, info, warn};
 
+/// Timeout for interactive OAuth callback (10 minutes)
+const OAUTH_CALLBACK_TIMEOUT_SECS: u64 = 600;
+
+/// Refresh token proactively if it expires within this many seconds
+const PROACTIVE_REFRESH_THRESHOLD_SECS: i64 = 60;
+
 const LOG_TARGET: &str = "versualizer::spotify::oauth";
-
-#[derive(Debug, Error)]
-pub enum OAuthError {
-    #[error("Failed to read token file: {0}")]
-    TokenFileRead(#[from] std::io::Error),
-
-    #[error("Failed to parse token file: {0}")]
-    TokenFileParse(#[from] serde_json::Error),
-
-    #[error("Spotify client error: {0}")]
-    SpotifyClient(#[from] rspotify::ClientError),
-
-    #[error("Authentication failed: {reason}")]
-    AuthFailed { reason: String },
-
-    #[error("Token expired and refresh failed")]
-    TokenExpired,
-}
 
 /// Persisted token data
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -58,10 +39,10 @@ impl From<&Token> for PersistedToken {
 }
 
 impl TryFrom<PersistedToken> for Token {
-    type Error = OAuthError;
+    type Error = SpotifyError;
 
     fn try_from(persisted: PersistedToken) -> Result<Self, Self::Error> {
-        Ok(Token {
+        Ok(Self {
             access_token: persisted.access_token,
             refresh_token: persisted.refresh_token,
             expires_at: persisted.expires_at.and_then(|ts| {
@@ -81,11 +62,15 @@ pub struct SpotifyOAuth {
 
 impl SpotifyOAuth {
     /// Create a new Spotify OAuth manager
+    ///
+    /// # Errors
+    ///
+    /// This function currently does not return errors but may in future versions.
     pub fn new(
         client_id: impl Into<String>,
         client_secret: impl Into<String>,
         redirect_uri: impl Into<String>,
-    ) -> Result<Self, OAuthError> {
+    ) -> Result<Self, SpotifyError> {
         let creds = Credentials::new(&client_id.into(), &client_secret.into());
 
         let oauth = OAuth {
@@ -101,13 +86,30 @@ impl SpotifyOAuth {
         Ok(Self { client, token_path })
     }
 
-    /// Get the token file path (~/.config/versualizer/.spotify_token_cache.json)
+    /// Get the token file path (~/.`config/versualizer/.spotify_token_cache.json`)
     fn token_path() -> PathBuf {
         crate::paths::spotify_token_cache_path()
     }
 
+    /// Acquire lock on token.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the lock cannot be acquired.
+    async fn lock_token(
+        &self,
+    ) -> Result<futures::lock::MutexGuard<'_, Option<Token>>, SpotifyError> {
+        self.client.token.lock().await.map_err(|_| SpotifyError::AuthFailed {
+            reason: "Failed to acquire token lock".to_string(),
+        })
+    }
+
     /// Try to load cached token
-    pub async fn load_cached_token(&self) -> Result<bool, OAuthError> {
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the token file cannot be read, parsed, or the token cannot be refreshed.
+    pub async fn load_cached_token(&self) -> Result<bool, SpotifyError> {
         if !self.token_path.exists() {
             debug!(target: LOG_TARGET, "No cached token found");
             return Ok(false);
@@ -121,20 +123,20 @@ impl SpotifyOAuth {
         if token.is_expired() {
             info!(target: LOG_TARGET, "Cached token is expired, will need to refresh");
             if token.refresh_token.is_some() {
-                *self.client.token.lock().await.unwrap() = Some(token);
-                return self.refresh_token().await.map(|_| true);
+                *self.lock_token().await? = Some(token);
+                return self.refresh_token().await.map(|()| true);
             }
             return Ok(false);
         }
 
-        *self.client.token.lock().await.unwrap() = Some(token);
+        *self.lock_token().await? = Some(token);
         info!(target: LOG_TARGET, "Loaded cached Spotify token");
         Ok(true)
     }
 
     /// Save current token to file
-    async fn save_token(&self) -> Result<(), OAuthError> {
-        let token_guard = self.client.token.lock().await.unwrap();
+    async fn save_token(&self) -> Result<(), SpotifyError> {
+        let token_guard = self.lock_token().await?;
         if let Some(ref token) = *token_guard {
             let persisted = PersistedToken::from(token);
 
@@ -151,36 +153,97 @@ impl SpotifyOAuth {
     }
 
     /// Refresh the access token
-    pub async fn refresh_token(&self) -> Result<(), OAuthError> {
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the token refresh fails or the token cannot be saved.
+    pub async fn refresh_token(&self) -> Result<(), SpotifyError> {
         info!(target: LOG_TARGET, "Refreshing Spotify access token");
 
         self.client
             .refresh_token()
             .await
-            .map_err(|e| OAuthError::AuthFailed {
-                reason: format!("Token refresh failed: {}", e),
+            .map_err(|e| SpotifyError::AuthFailed {
+                reason: format!("Token refresh failed: {e}"),
             })?;
 
         self.save_token().await?;
         Ok(())
     }
 
+    /// Proactively refresh the token if it will expire soon (within 60 seconds).
+    ///
+    /// This should be called before making API requests to avoid authentication
+    /// errors during the request.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the token refresh fails.
+    pub async fn ensure_token_fresh(&self) -> Result<(), SpotifyError> {
+        let needs_refresh = {
+            let token_guard = self.lock_token().await?;
+            Self::check_needs_refresh(token_guard.as_ref())
+        };
+
+        if needs_refresh {
+            self.refresh_token().await?;
+        }
+
+        Ok(())
+    }
+
+    /// Check if token needs refresh (expires within threshold or no token).
+    fn check_needs_refresh(token_opt: Option<&Token>) -> bool {
+        let Some(token) = token_opt else {
+            warn!(target: LOG_TARGET, "No token available for proactive refresh check");
+            return false;
+        };
+
+        let Some(expires_at) = token.expires_at else {
+            // No expiration time, assume it's fine
+            return false;
+        };
+
+        let now = chrono::Utc::now();
+        let seconds_until_expiry = (expires_at - now).num_seconds();
+
+        if seconds_until_expiry <= PROACTIVE_REFRESH_THRESHOLD_SECS {
+            debug!(
+                target: LOG_TARGET,
+                "Token expires in {}s (threshold: {}s), refreshing proactively",
+                seconds_until_expiry,
+                PROACTIVE_REFRESH_THRESHOLD_SECS
+            );
+            true
+        } else {
+            false
+        }
+    }
+
     /// Get the authorization URL for the user to visit
-    pub fn get_authorize_url(&self) -> Result<String, OAuthError> {
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the authorization URL cannot be generated.
+    pub fn get_authorize_url(&self) -> Result<String, SpotifyError> {
         self.client
             .get_authorize_url(false)
-            .map_err(|e| OAuthError::AuthFailed {
-                reason: format!("Failed to generate auth URL: {}", e),
+            .map_err(|e| SpotifyError::AuthFailed {
+                reason: format!("Failed to generate auth URL: {e}"),
             })
     }
 
     /// Handle the OAuth callback code
-    pub async fn handle_callback(&self, code: &str) -> Result<(), OAuthError> {
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the token exchange or save fails.
+    pub async fn handle_callback(&self, code: &str) -> Result<(), SpotifyError> {
         self.client
             .request_token(code)
             .await
-            .map_err(|e| OAuthError::AuthFailed {
-                reason: format!("Token exchange failed: {}", e),
+            .map_err(|e| SpotifyError::AuthFailed {
+                reason: format!("Token exchange failed: {e}"),
             })?;
 
         self.save_token().await?;
@@ -189,11 +252,16 @@ impl SpotifyOAuth {
     }
 
     /// Start the OAuth flow with a local HTTP server using axum
-    pub async fn authenticate_interactive(&self) -> Result<(), OAuthError> {
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the server cannot start, the browser cannot be opened, or authentication fails.
+    #[allow(clippy::too_many_lines)]
+    pub async fn authenticate_interactive(&self) -> Result<(), SpotifyError> {
         // Parse the redirect URI to get host and port
         let redirect_uri = &self.client.oauth.redirect_uri;
-        let parsed_uri = url::Url::parse(redirect_uri).map_err(|e| OAuthError::AuthFailed {
-            reason: format!("Invalid redirect URI: {}", e),
+        let parsed_uri = url::Url::parse(redirect_uri).map_err(|e| SpotifyError::AuthFailed {
+            reason: format!("Invalid redirect URI: {e}"),
         })?;
 
         let host = parsed_uri.host_str().unwrap_or("localhost");
@@ -213,7 +281,9 @@ impl SpotifyOAuth {
                 async move {
                     if let Some(code) = params.code {
                         // Send the code through the channel
-                        if let Some(sender) = tx.lock().await.take() {
+                        // Extract the value first to avoid holding lock in scrutinee
+                        let sender = tx.lock().await.take();
+                        if let Some(sender) = sender {
                             let _ = sender.send(code);
                         }
                         Html(SUCCESS_HTML.to_string())
@@ -224,11 +294,10 @@ impl SpotifyOAuth {
                             <head><title>Authorization Failed</title></head>
                             <body style="font-family: sans-serif; text-align: center; padding: 50px;">
                                 <h1>Authorization Failed</h1>
-                                <p>Error: {}</p>
+                                <p>Error: {error}</p>
                                 <p>Please close this window and try again.</p>
                             </body>
-                            </html>"#,
-                            error
+                            </html>"#
                         ))
                     } else {
                         Html(
@@ -251,13 +320,13 @@ impl SpotifyOAuth {
         // Start the server
         let addr: SocketAddr = format!("{}:{}", if host == "localhost" { "127.0.0.1" } else { host }, port)
             .parse()
-            .map_err(|e| OAuthError::AuthFailed {
-                reason: format!("Invalid address: {}", e),
+            .map_err(|e| SpotifyError::AuthFailed {
+                reason: format!("Invalid address: {e}"),
             })?;
 
         let listener = tokio::net::TcpListener::bind(addr).await.map_err(|e| {
-            OAuthError::AuthFailed {
-                reason: format!("Failed to bind to {}: {}", addr, e),
+            SpotifyError::AuthFailed {
+                reason: format!("Failed to bind to {addr}: {e}"),
             }
         })?;
 
@@ -275,24 +344,32 @@ impl SpotifyOAuth {
         // Try to open the URL in the default browser
         if let Err(e) = open::that(&auth_url) {
             warn!(target: LOG_TARGET, "Could not open browser automatically: {}", e);
-            println!("Please open this URL manually:\n{}\n", auth_url);
+            println!("Please open this URL manually:\n{auth_url}\n");
         }
 
-        println!("Waiting for authorization callback on http://{}{}...\n", addr, callback_path);
+        println!("Waiting for authorization callback on http://{addr}{callback_path}...\n");
 
         // Spawn the server and wait for the callback
         let server = axum::serve(listener, app);
 
-        // Wait for either the code or a timeout
+        // Wait for either the code, server error, or timeout (10 minutes)
         let code = tokio::select! {
             result = rx => {
-                result.map_err(|_| OAuthError::AuthFailed {
+                result.map_err(|_| SpotifyError::AuthFailed {
                     reason: "Callback channel closed unexpectedly".to_string(),
                 })?
             }
             _ = server => {
-                return Err(OAuthError::AuthFailed {
+                return Err(SpotifyError::AuthFailed {
                     reason: "Server stopped unexpectedly".to_string(),
+                });
+            }
+            () = tokio::time::sleep(Duration::from_secs(OAUTH_CALLBACK_TIMEOUT_SECS)) => {
+                return Err(SpotifyError::AuthFailed {
+                    reason: format!(
+                        "OAuth callback timed out after {} minutes. Please try again.",
+                        OAUTH_CALLBACK_TIMEOUT_SECS / 60
+                    ),
                 });
             }
         };
@@ -302,16 +379,17 @@ impl SpotifyOAuth {
     }
 
     /// Ensure we have a valid token, refreshing or re-authenticating if needed
-    pub async fn ensure_authenticated(&self) -> Result<(), OAuthError> {
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if authentication or token refresh fails.
+    pub async fn ensure_authenticated(&self) -> Result<(), SpotifyError> {
         // Try loading cached token
         if self.load_cached_token().await? {
             // Check if we need to refresh
             let needs_refresh = {
-                let token_guard = self.client.token.lock().await.unwrap();
-                token_guard
-                    .as_ref()
-                    .map(|t| t.is_expired())
-                    .unwrap_or(true)
+                let token_guard = self.lock_token().await?;
+                token_guard.as_ref().is_none_or(rspotify::Token::is_expired)
             };
 
             if needs_refresh {
@@ -332,7 +410,8 @@ impl SpotifyOAuth {
     }
 
     /// Get the underlying Spotify client
-    pub fn client(&self) -> &AuthCodeSpotify {
+    #[must_use] 
+    pub const fn client(&self) -> &AuthCodeSpotify {
         &self.client
     }
 }

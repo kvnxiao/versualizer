@@ -4,9 +4,15 @@ members = ["versualizer-core", "versualizer-spotify", "versualizer-app-freya"]
 
 [workspace.package]
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
+rust-version = "1.75"
 license = "MIT"
 authors = ["Kevin Xiao"]
+description = "Real-time synchronized lyrics visualizer for Spotify"
+repository = "https://github.com/kvnxiao/versualizer"
+readme = "README.md"
+keywords = ["lyrics", "spotify", "karaoke", "music", "visualization"]
+categories = ["multimedia", "multimedia::audio"]
 
 [workspace.dependencies]
 # Async runtime
@@ -19,6 +25,8 @@ toml = "0.8"
 
 # HTTP client
 reqwest = { version = "0.12", features = ["json"] }
+reqwest-middleware = "0.4"
+reqwest-retry = "0.7"
 
 # SQLite
 tokio-rusqlite = "0.6"
@@ -60,3 +68,19 @@ global-hotkey = "0.6"
 
 # Shutdown handling
 tokio-util = { version = "0.7", features = ["rt"] }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+# Lint groups with lower priority so individual lints can override them
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+nursery = { level = "deny", priority = -1 }
+cargo = { level = "deny", priority = -1 }
+# Individual lint levels
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+# Allow multiple crate versions - caused by transitive dependencies
+multiple_crate_versions = "allow"

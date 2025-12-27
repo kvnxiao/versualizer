@@ -1,8 +1,13 @@
 use std::path::PathBuf;
 use thiserror::Error;
 
+/// Core library error type for versualizer-core.
+///
+/// This error type covers configuration, lyrics, caching, and infrastructure errors.
+/// Spotify-specific errors are defined in the versualizer-spotify crate.
+/// UI-specific errors are defined in the application crate.
 #[derive(Debug, Error)]
-pub enum VersualizerError {
+pub enum CoreError {
     // Configuration errors
     #[error("Config file not found at {path}. A template has been created - please edit it with your Spotify credentials and restart.")]
     ConfigNotFound { path: PathBuf },
@@ -15,19 +20,6 @@ pub enum VersualizerError {
 
     #[error("Failed to parse config file: {0}")]
     ConfigParseError(#[from] toml::de::Error),
-
-    // Spotify errors
-    #[error("Spotify authentication failed: {reason}")]
-    SpotifyAuthFailed { reason: String },
-
-    #[error("Spotify token expired and refresh failed")]
-    SpotifyTokenExpired,
-
-    #[error("Spotify API rate limited, retry after {retry_after_secs}s")]
-    SpotifyRateLimited { retry_after_secs: u32 },
-
-    #[error("Spotify playback not active on any device")]
-    SpotifyNoActivePlayback,
 
     // Lyrics errors
     #[error("Lyrics not found for track: {track} by {artist}")]
@@ -50,16 +42,18 @@ pub enum VersualizerError {
     #[error("Network request failed: {0}")]
     NetworkError(#[from] reqwest::Error),
 
+    // HTTP middleware errors
+    #[error("HTTP middleware error: {0}")]
+    MiddlewareError(#[from] reqwest_middleware::Error),
+
     // IO errors
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
-
-    // UI errors
-    #[error("Window creation failed: {reason}")]
-    WindowError { reason: String },
-
-    #[error("Rendering error: {reason}")]
-    RenderError { reason: String },
 }
 
-pub type Result<T> = std::result::Result<T, VersualizerError>;
+/// Convenience type alias for Results with `CoreError`.
+pub type Result<T> = std::result::Result<T, CoreError>;
+
+// Backwards compatibility alias - deprecated, will be removed in future version
+#[deprecated(since = "0.2.0", note = "Use CoreError instead")]
+pub type VersualizerError = CoreError;
