@@ -98,7 +98,7 @@ impl LrcFile {
     }
 
     /// Find the current line for a given playback position
-    #[must_use] 
+    #[must_use]
     pub fn current_line(&self, position: Duration) -> Option<&LrcLine> {
         // Find the last line that started before or at the current position
         self.lines
@@ -108,7 +108,7 @@ impl LrcFile {
     }
 
     /// Find the current line index for a given playback position
-    #[must_use] 
+    #[must_use]
     pub fn current_line_index(&self, position: Duration) -> Option<usize> {
         self.lines
             .iter()
@@ -119,7 +119,7 @@ impl LrcFile {
     }
 
     /// Get lines around the current position for display
-    #[must_use] 
+    #[must_use]
     pub fn visible_lines(&self, position: Duration, before: usize, after: usize) -> Vec<&LrcLine> {
         let current_idx = self.current_line_index(position).unwrap_or(0);
 
@@ -212,8 +212,7 @@ impl LrcLine {
                         // Interpolate within the word
                         let char_in_word = char_index - current_char;
                         let char_progress = char_in_word as f32 / word_len as f32;
-                        let time_progress =
-                            elapsed.as_secs_f32() / word_duration.as_secs_f32();
+                        let time_progress = elapsed.as_secs_f32() / word_duration.as_secs_f32();
                         return if time_progress >= char_progress {
                             1.0
                         } else {
@@ -275,7 +274,9 @@ fn parse_duration_tag(s: &str) -> Option<Duration> {
     let minutes: u64 = parts[0].parse().ok()?;
     let seconds: f64 = parts[1].parse().ok()?;
 
-    Some(Duration::from_secs_f64((minutes as f64).mul_add(60.0, seconds)))
+    Some(Duration::from_secs_f64(
+        (minutes as f64).mul_add(60.0, seconds),
+    ))
 }
 
 /// Parse a lyric line like [00:12.34]Hello world or [00:12.34][00:15.67]Same lyrics
@@ -317,8 +318,15 @@ fn parse_lyric_line(line: &str) -> Option<Vec<LrcLine>> {
             start_time: timestamp,
             text: if words.is_some() {
                 // Reconstruct text from words for enhanced format
-                words
-                    .as_ref().map_or_else(|| text.to_string(), |w| w.iter().map(|word| word.text.as_str()).collect::<Vec<_>>().join(" "))
+                words.as_ref().map_or_else(
+                    || text.to_string(),
+                    |w| {
+                        w.iter()
+                            .map(|word| word.text.as_str())
+                            .collect::<Vec<_>>()
+                            .join(" ")
+                    },
+                )
             } else {
                 text.to_string()
             },
@@ -344,7 +352,9 @@ fn parse_timestamp(s: &str) -> Option<Duration> {
             let minutes: u64 = parts[0].parse().ok()?;
             let seconds: f64 = parts[1].parse().ok()?;
 
-            Some(Duration::from_secs_f64((minutes as f64).mul_add(60.0, seconds)))
+            Some(Duration::from_secs_f64(
+                (minutes as f64).mul_add(60.0, seconds),
+            ))
         }
         3 => {
             // mm:ss:xx (hundredths)

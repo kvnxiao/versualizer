@@ -362,13 +362,13 @@ impl Default for BehaviorConfig {
 
 impl Config {
     /// Get the configuration directory path (~/.config/versualizer/)
-    #[must_use] 
+    #[must_use]
     pub fn config_dir() -> PathBuf {
         crate::paths::config_dir()
     }
 
     /// Get the config file path (~/.config/versualizer/config.toml)
-    #[must_use] 
+    #[must_use]
     pub fn config_path() -> PathBuf {
         crate::paths::config_path()
     }
@@ -412,7 +412,7 @@ impl Config {
     }
 
     /// Parse a hex color string to RGB tuple
-    #[must_use] 
+    #[must_use]
     pub fn parse_color(hex: &str) -> Option<(u8, u8, u8, u8)> {
         let hex = hex.trim_start_matches('#');
         match hex.len() {

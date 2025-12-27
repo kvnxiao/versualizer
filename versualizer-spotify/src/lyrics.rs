@@ -9,7 +9,6 @@ use versualizer_core::{
     LyricsResult,
 };
 
-const LOG_TARGET: &str = "versualizer::provider::spotify_lyrics";
 const SPOTIFY_LYRICS_API: &str = "https://spclient.wg.spotify.com/color-lyrics/v2/track";
 
 /// Default timeout for HTTP requests (10 seconds)
@@ -37,7 +36,6 @@ impl SpotifyLyricsProvider {
         let sp_dc = sp_dc.into();
         if !sp_dc.is_empty() {
             warn!(
-                target: LOG_TARGET,
                 "SpotifyLyricsProvider enabled. WARNING: This uses an unofficial Spotify API \
                  that may violate Spotify's Terms of Service. Use at your own risk."
             );
@@ -50,7 +48,8 @@ impl SpotifyLyricsProvider {
             .build()?;
 
         // Wrap with retry middleware (exponential backoff)
-        let retry_policy = ExponentialBackoff::builder().build_with_max_retries(DEFAULT_MAX_RETRIES);
+        let retry_policy =
+            ExponentialBackoff::builder().build_with_max_retries(DEFAULT_MAX_RETRIES);
         let client = ClientBuilder::new(base_client)
             .with(RetryTransientMiddleware::new_with_policy(retry_policy))
             .build();
@@ -108,12 +107,12 @@ impl SpotifyLyricsProvider {
                 })
             },
             |id| {
-                Self::extract_track_id(id)
-                    .map(String::from)
-                    .ok_or_else(|| CoreError::LyricsProviderFailed {
+                Self::extract_track_id(id).map(String::from).ok_or_else(|| {
+                    CoreError::LyricsProviderFailed {
                         provider: self.name().to_string(),
                         reason: format!("Invalid Spotify track ID: {id}"),
-                    })
+                    }
+                })
             },
         )
     }
@@ -121,7 +120,7 @@ impl SpotifyLyricsProvider {
     /// Send request to Spotify lyrics API
     async fn send_request(&self, track_id: &str) -> Result<reqwest::Response, CoreError> {
         let url = format!("{SPOTIFY_LYRICS_API}/{track_id}?format=json&market=from_token");
-        info!(target: LOG_TARGET, "Spotify GET: {}", url);
+        info!("Spotify GET: {}", url);
 
         let response = self
             .client
@@ -135,7 +134,7 @@ impl SpotifyLyricsProvider {
             .send()
             .await?;
 
-        info!(target: LOG_TARGET, "Spotify response status: {}", response.status());
+        info!("Spotify response status: {}", response.status());
         Ok(response)
     }
 
@@ -143,7 +142,7 @@ impl SpotifyLyricsProvider {
     /// Returns `Some(FetchedLyrics)` with `NotFound` result if 404, `None` otherwise.
     fn check_not_found(response: &reqwest::Response, track_id: &str) -> Option<FetchedLyrics> {
         if response.status() == reqwest::StatusCode::NOT_FOUND {
-            info!(target: LOG_TARGET, "No Spotify lyrics found for track: {}", track_id);
+            info!("No Spotify lyrics found for track: {}", track_id);
             return Some(FetchedLyrics {
                 result: LyricsResult::NotFound,
                 provider_id: track_id.to_string(),
@@ -155,7 +154,7 @@ impl SpotifyLyricsProvider {
     /// Check for authentication errors
     fn check_auth_error(&self, response: &reqwest::Response) -> Result<(), CoreError> {
         if response.status() == reqwest::StatusCode::UNAUTHORIZED {
-            warn!(target: LOG_TARGET, "SP_DC cookie expired or invalid (401 Unauthorized)");
+            warn!("SP_DC cookie expired or invalid (401 Unauthorized)");
             return Err(CoreError::LyricsProviderFailed {
                 provider: self.name().to_string(),
                 reason: "SP_DC cookie expired or invalid".into(),
@@ -163,7 +162,7 @@ impl SpotifyLyricsProvider {
         }
 
         if !response.status().is_success() {
-            warn!(target: LOG_TARGET, "Spotify lyrics API returned status: {}", response.status());
+            warn!("Spotify lyrics API returned status: {}", response.status());
             return Err(CoreError::LyricsProviderFailed {
                 provider: self.name().to_string(),
                 reason: format!("Spotify lyrics API returned status: {}", response.status()),
@@ -206,7 +205,7 @@ impl SpotifyLyricsProvider {
             lines,
         };
 
-        info!(target: LOG_TARGET, "Got Spotify synced lyrics with {} lines", lrc.lines.len());
+        info!("Got Spotify synced lyrics with {} lines", lrc.lines.len());
         FetchedLyrics {
             result: LyricsResult::Synced(lrc),
             provider_id: track_id,
@@ -230,7 +229,7 @@ impl SpotifyLyricsProvider {
             };
         }
 
-        info!(target: LOG_TARGET, "Got Spotify unsynced lyrics");
+        info!("Got Spotify unsynced lyrics");
         FetchedLyrics {
             result: LyricsResult::Unsynced(text),
             provider_id: track_id,
@@ -284,7 +283,7 @@ impl LyricsProvider for SpotifyLyricsProvider {
             }
             "UNSYNCED" => Self::parse_unsynced_lyrics(&result.lyrics, track_id),
             _ => {
-                warn!(target: LOG_TARGET, "Unknown Spotify sync type: {}", result.lyrics.sync_type);
+                warn!("Unknown Spotify sync type: {}", result.lyrics.sync_type);
                 FetchedLyrics {
                     result: LyricsResult::NotFound,
                     provider_id: track_id,

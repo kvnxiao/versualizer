@@ -30,7 +30,7 @@ impl Default for PlaybackState {
 
 impl PlaybackState {
     /// Create a new playback state
-    #[must_use] 
+    #[must_use]
     pub fn new(
         is_playing: bool,
         track: Option<TrackInfo>,
@@ -47,7 +47,7 @@ impl PlaybackState {
     }
 
     /// Get interpolated position based on time elapsed since last update
-    #[must_use] 
+    #[must_use]
     pub fn interpolated_position(&self) -> Duration {
         if !self.is_playing {
             return self.position;
@@ -61,7 +61,7 @@ impl PlaybackState {
     }
 
     /// Check if the track has changed
-    #[must_use] 
+    #[must_use]
     pub fn track_changed(&self, other: &Self) -> bool {
         match (&self.track, &other.track) {
             (Some(a), Some(b)) => a.id != b.id,
@@ -71,13 +71,13 @@ impl PlaybackState {
     }
 
     /// Check if playback state changed (playing <-> paused)
-    #[must_use] 
+    #[must_use]
     pub const fn playback_state_changed(&self, other: &Self) -> bool {
         self.is_playing != other.is_playing
     }
 
     /// Check if a seek occurred (position jumped unexpectedly)
-    #[must_use] 
+    #[must_use]
     pub fn seek_occurred(&self, other: &Self, threshold: Duration) -> bool {
         if self.track_changed(other) {
             return false;

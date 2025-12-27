@@ -90,16 +90,18 @@ pub fn KaraokeLine(
     let play_state = if is_playing { "running" } else { "paused" };
 
     // Check if there's an intro (lyrics exist and have intro duration > 0)
-    let has_intro = lyrics
-        .as_ref()
-        .is_some_and(PrecomputedLyrics::has_intro);
+    let has_intro = lyrics.as_ref().is_some_and(PrecomputedLyrics::has_intro);
 
     // Determine which index in `visible` array is the current line.
     // When current_index < 0 (intro), the first visible line is the intro line at index 0.
     // When current_index >= 0, we need to account for buffer lines before.
     let current_visible_idx: Option<usize> = if current_index < 0 {
         // In intro: if there's an intro line, it's at visible[0]
-        if has_intro { Some(0) } else { None }
+        if has_intro {
+            Some(0)
+        } else {
+            None
+        }
     } else {
         // On an actual line - calculate position in visible array
         #[allow(clippy::cast_sign_loss)]

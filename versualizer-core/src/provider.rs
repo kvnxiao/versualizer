@@ -37,7 +37,7 @@ impl LyricsQuery {
     }
 
     /// Set duration
-    #[must_use] 
+    #[must_use]
     pub const fn with_duration(mut self, duration_secs: u32) -> Self {
         self.duration_secs = Some(duration_secs);
         self
@@ -73,19 +73,19 @@ pub struct FetchedLyrics {
 
 impl LyricsResult {
     /// Check if lyrics were found
-    #[must_use] 
+    #[must_use]
     pub const fn is_found(&self) -> bool {
         !matches!(self, Self::NotFound)
     }
 
     /// Check if lyrics are synced
-    #[must_use] 
+    #[must_use]
     pub const fn is_synced(&self) -> bool {
         matches!(self, Self::Synced(_))
     }
 
     /// Get as `LrcFile` if synced
-    #[must_use] 
+    #[must_use]
     pub const fn as_synced(&self) -> Option<&LrcFile> {
         match self {
             Self::Synced(lrc) => Some(lrc),
@@ -94,12 +94,16 @@ impl LyricsResult {
     }
 
     /// Get text content regardless of type
-    #[must_use] 
+    #[must_use]
     pub fn text(&self) -> Option<String> {
         match self {
-            Self::Synced(lrc) => {
-                Some(lrc.lines.iter().map(|l| l.text.as_str()).collect::<Vec<_>>().join("\n"))
-            }
+            Self::Synced(lrc) => Some(
+                lrc.lines
+                    .iter()
+                    .map(|l| l.text.as_str())
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+            ),
             Self::Unsynced(text) => Some(text.clone()),
             Self::NotFound => None,
         }

@@ -1,6 +1,6 @@
 use dioxus::prelude::*;
 use std::time::{Duration, Instant};
-use tracing::{debug, trace};
+use tracing::trace;
 use versualizer_core::LrcFile;
 
 /// UI display configuration for karaoke rendering.
@@ -238,9 +238,6 @@ pub struct LocalPlaybackTimer {
     is_playing: bool,
 }
 
-/// Log target for timer-related messages
-const TIMER_LOG_TARGET: &str = "versualizer::timer";
-
 impl LocalPlaybackTimer {
     /// Drift threshold in milliseconds. If local and server positions differ by more
     /// than this amount, we hard-sync. Otherwise, we trust our local timer.
@@ -304,8 +301,7 @@ impl LocalPlaybackTimer {
         };
 
         if drift > Self::DRIFT_THRESHOLD_MS {
-            debug!(
-                target: TIMER_LOG_TARGET,
+            trace!(
                 "Drift correction applied: local={}ms, server={}ms, drift={}ms ({}) > threshold={}ms",
                 local, server_position_ms, drift, drift_direction, Self::DRIFT_THRESHOLD_MS
             );
@@ -314,7 +310,6 @@ impl LocalPlaybackTimer {
         } else {
             // Small drift: ignore, local timer is accurate enough
             trace!(
-                target: TIMER_LOG_TARGET,
                 "Drift within threshold: local={}ms, server={}ms, drift={}ms ({}) <= threshold={}ms",
                 local, server_position_ms, drift, drift_direction, Self::DRIFT_THRESHOLD_MS
             );

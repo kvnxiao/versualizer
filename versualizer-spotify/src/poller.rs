@@ -7,9 +7,6 @@ use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, warn};
 use versualizer_core::{DurationExt, PlaybackState, SyncEngine, TrackInfo};
 
-const LOG_TARGET_POLLER: &str = "versualizer::spotify::poller";
-const LOG_TARGET_FETCHER: &str = "versualizer::lyrics::fetcher";
-
 /// Format milliseconds as M:SS/M:SS timestamp (e.g., "0:26/3:23")
 fn format_timestamp(position_ms: u64, duration_ms: u64) -> String {
     let pos_secs = position_ms / 1000;
@@ -20,9 +17,7 @@ fn format_timestamp(position_ms: u64, duration_ms: u64) -> String {
     let dur_mins = dur_secs / 60;
     let dur_remaining_secs = dur_secs % 60;
 
-    format!(
-        "{pos_mins}:{pos_remaining_secs:02}/{dur_mins}:{dur_remaining_secs:02}"
-    )
+    format!("{pos_mins}:{pos_remaining_secs:02}/{dur_mins}:{dur_remaining_secs:02}")
 }
 
 /// Spotify playback state poller
@@ -49,7 +44,7 @@ impl SpotifyPoller {
     }
 
     /// Get a clone of the cancellation token
-    #[must_use] 
+    #[must_use]
     pub fn cancel_token(&self) -> CancellationToken {
         self.cancel_token.clone()
     }
@@ -60,7 +55,7 @@ impl SpotifyPoller {
     }
 
     /// Start polling in a background task
-    #[must_use] 
+    #[must_use]
     pub fn start(self: Arc<Self>) -> tokio::task::JoinHandle<()> {
         tokio::spawn(async move {
             self.run().await;
@@ -69,7 +64,7 @@ impl SpotifyPoller {
 
     /// Run the polling loop
     async fn run(&self) {
-        info!(target: LOG_TARGET_POLLER, "Starting Spotify playback poller");
+        info!("Starting Spotify playback poller");
 
         let mut consecutive_errors = 0;
         let max_backoff = Duration::from_secs(30);
@@ -77,7 +72,7 @@ impl SpotifyPoller {
         loop {
             tokio::select! {
                 () = self.cancel_token.cancelled() => {
-                    info!(target: LOG_TARGET_POLLER, "Poller shutting down gracefully");
+                    info!("Poller shutting down gracefully");
                     break;
                 }
                 () = tokio::time::sleep(self.poll_interval) => {
@@ -87,7 +82,7 @@ impl SpotifyPoller {
                         }
                         Err(e) => {
                             consecutive_errors += 1;
-                            warn!(target: LOG_TARGET_POLLER, "Poll error (attempt {}): {}", consecutive_errors, e);
+                            warn!("Poll error (attempt {}): {}", consecutive_errors, e);
 
                             // Exponential backoff: 100ms * 2^errors, capped at max_backoff
                             // consecutive_errors is capped at 10, so max is 100 * 2^10 = 102,400ms
@@ -96,7 +91,7 @@ impl SpotifyPoller {
                             let backoff = Duration::from_millis(backoff_ms.min(max_backoff.as_millis_u64()));
 
                             if consecutive_errors >= 5 {
-                                error!(target: LOG_TARGET_POLLER, "Too many consecutive errors, waiting {} seconds", backoff.as_secs());
+                                error!("Too many consecutive errors, waiting {} seconds", backoff.as_secs());
                             }
 
                             tokio::time::sleep(backoff).await;
@@ -104,7 +99,7 @@ impl SpotifyPoller {
                             // Try to refresh token on auth errors
                             if matches!(e, SpotifyError::Api(_)) {
                                 if let Err(refresh_err) = self.oauth.refresh_token().await {
-                                    error!(target: LOG_TARGET_POLLER, "Token refresh failed: {}", refresh_err);
+                                    error!("Token refresh failed: {}", refresh_err);
                                 }
                             }
                         }
@@ -131,7 +126,11 @@ impl SpotifyPoller {
 
         let state = if let Some(context) = playback {
             // Log basic playback info with timestamp
-            let status = if context.is_playing { "▶️" } else { "⏸️" };
+            let status = if context.is_playing {
+                "▶️"
+            } else {
+                "⏸️"
+            };
             let (track_desc, duration_ms) = match &context.item {
                 Some(rspotify::model::PlayableItem::Track(t)) => {
                     let artist = t.artists.first().map_or("Unknown", |a| a.name.as_str());
@@ -148,7 +147,7 @@ impl SpotifyPoller {
                 .progress
                 .map_or(0, |p| u64::try_from(p.num_milliseconds()).unwrap_or(0));
             let timestamp = format_timestamp(position_ms, duration_ms);
-            info!(target: LOG_TARGET_POLLER, "{}  {} | {}", status, timestamp, track_desc);
+            info!("{}  {} | {}", status, timestamp, track_desc);
 
             // Extract track info and duration together to avoid borrow issues
             let (track_info, duration) = match &context.item {
@@ -167,13 +166,8 @@ impl SpotifyPoller {
                         .as_ref()
                         .map(|id| id.id().to_string())
                         .unwrap_or_default();
-                    let info = TrackInfo::new(
-                        track_id,
-                        &track.name,
-                        artists,
-                        &track.album.name,
-                        dur,
-                    );
+                    let info =
+                        TrackInfo::new(track_id, &track.name, artists, &track.album.name, dur);
                     (Some(info), dur)
                 }
                 Some(rspotify::model::PlayableItem::Episode(episode)) => {
@@ -195,21 +189,18 @@ impl SpotifyPoller {
             // Compensate for network latency
             // Assume position is from halfway through the request
             let latency_compensation = request_latency / 2;
-            let position = context
-                .progress
-                .map_or(Duration::ZERO, |p| {
-                    p.to_std().unwrap_or(Duration::ZERO) + latency_compensation
-                });
+            let position = context.progress.map_or(Duration::ZERO, |p| {
+                p.to_std().unwrap_or(Duration::ZERO) + latency_compensation
+            });
 
             PlaybackState::new(context.is_playing, track_info, position, duration)
         } else {
             // No active playback - this happens when no Spotify device is active
-            info!(target: LOG_TARGET_POLLER, "Spotify: no active playback");
+            info!("Spotify: no active playback");
             PlaybackState::default()
         };
 
         debug!(
-            target: LOG_TARGET_POLLER,
             "Polled Spotify: playing={}, track={:?}, position={:?}",
             state.is_playing,
             state.track.as_ref().map(|t| &t.name),
@@ -247,13 +238,13 @@ impl LyricsFetcher {
     }
 
     /// Get a clone of the cancellation token
-    #[must_use] 
+    #[must_use]
     pub fn cancel_token(&self) -> CancellationToken {
         self.cancel_token.clone()
     }
 
     /// Start the lyrics fetcher in a background task
-    #[must_use] 
+    #[must_use]
     pub fn start(self: Arc<Self>) -> tokio::task::JoinHandle<()> {
         tokio::spawn(async move {
             self.run().await;
@@ -262,7 +253,7 @@ impl LyricsFetcher {
 
     /// Run the lyrics fetching loop
     async fn run(&self) {
-        info!(target: LOG_TARGET_FETCHER, "Starting lyrics fetcher");
+        info!("Starting lyrics fetcher");
 
         let mut rx = self.sync_engine.subscribe();
 
@@ -270,7 +261,6 @@ impl LyricsFetcher {
         if let Some(track) = self.sync_engine.current_track().await {
             if self.sync_engine.lyrics().await.is_none() {
                 info!(
-                    target: LOG_TARGET_FETCHER,
                     "Found existing track on startup: {} - {}, fetching lyrics",
                     track.artist, track.name
                 );
@@ -280,25 +270,25 @@ impl LyricsFetcher {
 
         loop {
             tokio::select! {
-                () = self.cancel_token.cancelled() => {
-                    info!(target: LOG_TARGET_FETCHER, "Lyrics fetcher shutting down");
-                    break;
-                }
-                event = rx.recv() => {
-                    match event {
-                        Ok(versualizer_core::SyncEvent::TrackChanged { track, .. } |
-versualizer_core::SyncEvent::PlaybackStarted { track, .. }) => {
-                            self.fetch_lyrics_for_track(&track).await;
+                            () = self.cancel_token.cancelled() => {
+                                info!("Lyrics fetcher shutting down");
+                                break;
+                            }
+                            event = rx.recv() => {
+                                match event {
+                                    Ok(versualizer_core::SyncEvent::TrackChanged { track, .. } |
+            versualizer_core::SyncEvent::PlaybackStarted { track, .. }) => {
+                                        self.fetch_lyrics_for_track(&track).await;
+                                    }
+                                    Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                                        break;
+                                    }
+                                    _ => {
+                                        // Missed some events (Lagged) or other event types, continue
+                                    }
+                                }
+                            }
                         }
-                        Err(tokio::sync::broadcast::error::RecvError::Closed) => {
-                            break;
-                        }
-                        _ => {
-                            // Missed some events (Lagged) or other event types, continue
-                        }
-                    }
-                }
-            }
         }
     }
 
@@ -306,14 +296,13 @@ versualizer_core::SyncEvent::PlaybackStarted { track, .. }) => {
     async fn fetch_lyrics_for_track(&self, track: &TrackInfo) {
         let provider_names: Vec<_> = self.providers.iter().map(|p| p.name()).collect();
         info!(
-            target: LOG_TARGET_FETCHER,
             "Fetching lyrics for: {} - {} (providers: {:?})",
             track.artist, track.name, provider_names
         );
 
         // Check cache first
         if let Ok(Some(cached)) = self.cache.get_by_provider_id("spotify", &track.id).await {
-            info!(target: LOG_TARGET_FETCHER, "Using cached lyrics for {}", track.name);
+            info!("Using cached lyrics for {}", track.name);
             if let versualizer_core::LyricsResult::Synced(lrc) = cached.to_lyrics_result() {
                 self.sync_engine.set_lyrics(lrc).await;
                 return;
@@ -327,15 +316,16 @@ versualizer_core::SyncEvent::PlaybackStarted { track, .. }) => {
             .with_spotify_id(&track.id);
 
         for provider in &self.providers {
-            info!(target: LOG_TARGET_FETCHER, "Trying provider: {}", provider.name());
+            info!("Trying provider: {}", provider.name());
             match provider.fetch(&query).await {
                 Ok(fetched) => {
                     match &fetched.result {
                         versualizer_core::LyricsResult::Synced(lrc) => {
                             info!(
-                                target: LOG_TARGET_FETCHER,
                                 "Found synced lyrics from {} ({} lines, provider_id: {})",
-                                provider.name(), lrc.lines.len(), fetched.provider_id
+                                provider.name(),
+                                lrc.lines.len(),
+                                fetched.provider_id
                             );
 
                             // Cache the result
@@ -349,41 +339,46 @@ versualizer_core::SyncEvent::PlaybackStarted { track, .. }) => {
                             if let Err(e) = self
                                 .cache
                                 .store(
-                                    "spotify",  // provider (music source)
-                                    &track.id,  // provider_track_id (clean ID without prefix)
+                                    "spotify", // provider (music source)
+                                    &track.id, // provider_track_id (clean ID without prefix)
                                     &fetched.result,
                                     &metadata,
-                                    provider.name(),  // lyrics_provider (lrclib, spotify_lyrics, etc.)
-                                    &fetched.provider_id,  // lyrics_provider_id
+                                    provider.name(), // lyrics_provider (lrclib, spotify_lyrics, etc.)
+                                    &fetched.provider_id, // lyrics_provider_id
                                 )
                                 .await
                             {
-                                warn!(target: LOG_TARGET_FETCHER, "Failed to cache lyrics: {}", e);
+                                warn!("Failed to cache lyrics: {}", e);
                             }
 
                             self.sync_engine.set_lyrics(lrc.clone()).await;
                             return;
                         }
                         versualizer_core::LyricsResult::Unsynced(_) => {
-                            info!(target: LOG_TARGET_FETCHER, "Provider {} returned unsynced lyrics (not usable for karaoke)", provider.name());
+                            info!(
+                                "Provider {} returned unsynced lyrics (not usable for karaoke)",
+                                provider.name()
+                            );
                             // Continue trying other providers for synced lyrics
                         }
                         versualizer_core::LyricsResult::NotFound => {
-                            info!(target: LOG_TARGET_FETCHER, "Provider {} returned no lyrics", provider.name());
+                            info!("Provider {} returned no lyrics", provider.name());
                         }
                     }
                 }
                 Err(e) => {
-                    warn!(target: LOG_TARGET_FETCHER, "Provider {} failed with error: {}", provider.name(), e);
+                    warn!("Provider {} failed with error: {}", provider.name(), e);
                 }
             }
         }
 
         // No synced lyrics found
         info!(
-            target: LOG_TARGET_FETCHER,
             "No synced lyrics found for {} - {} (tried {} providers: {:?})",
-            track.artist, track.name, self.providers.len(), provider_names
+            track.artist,
+            track.name,
+            self.providers.len(),
+            provider_names
         );
         self.sync_engine.set_no_lyrics().await;
     }

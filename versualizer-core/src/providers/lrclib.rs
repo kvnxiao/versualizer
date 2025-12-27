@@ -8,7 +8,6 @@ use serde::Deserialize;
 use std::time::Duration;
 use tracing::{debug, info, warn};
 
-const LOG_TARGET: &str = "versualizer::provider::lrclib";
 const LRCLIB_API_URL: &str = "https://lrclib.net/api";
 
 /// Default timeout for HTTP requests (10 seconds)
@@ -55,7 +54,8 @@ impl LrclibProvider {
             .build()?;
 
         // Wrap with retry middleware (exponential backoff)
-        let retry_policy = ExponentialBackoff::builder().build_with_max_retries(DEFAULT_MAX_RETRIES);
+        let retry_policy =
+            ExponentialBackoff::builder().build_with_max_retries(DEFAULT_MAX_RETRIES);
         let client = ClientBuilder::new(base_client)
             .with(RetryTransientMiddleware::new_with_policy(retry_policy))
             .build();
@@ -88,7 +88,6 @@ impl LyricsProvider for LrclibProvider {
 
     async fn fetch(&self, query: &LyricsQuery) -> Result<FetchedLyrics, CoreError> {
         info!(
-            target: LOG_TARGET,
             "Fetching lyrics from LRCLIB for: {} - {} (duration: {:?}s)",
             query.artist_name, query.track_name, query.duration_secs
         );
@@ -111,19 +110,19 @@ impl LyricsProvider for LrclibProvider {
             let _ = write!(url, "&duration={duration}");
         }
 
-        info!(target: LOG_TARGET, "LRCLIB GET (exact match): {}", url);
+        info!("LRCLIB GET (exact match): {}", url);
 
         let response = self.client.get(&url).send().await?;
-        info!(target: LOG_TARGET, "LRCLIB response status: {}", response.status());
+        info!("LRCLIB response status: {}", response.status());
 
         if response.status() == reqwest::StatusCode::NOT_FOUND {
-            info!(target: LOG_TARGET, "LRCLIB exact match not found, trying search by track name only");
+            info!("LRCLIB exact match not found, trying search by track name only");
             // Try searching with just track name and match duration manually
             return self.search_by_track_name(query).await;
         }
 
         if !response.status().is_success() {
-            warn!(target: LOG_TARGET, "LRCLIB returned status: {}", response.status());
+            warn!("LRCLIB returned status: {}", response.status());
             return Err(CoreError::LyricsProviderFailed {
                 provider: self.name().to_string(),
                 reason: format!("LRCLIB returned status: {}", response.status()),
@@ -131,7 +130,7 @@ impl LyricsProvider for LrclibProvider {
         }
 
         let result: LrclibResponse = response.json().await?;
-        info!(target: LOG_TARGET, "LRCLIB found match with id: {}", result.id);
+        info!("LRCLIB found match with id: {}", result.id);
         Ok(Self::parse_response(result))
     }
 }
@@ -141,10 +140,7 @@ const DURATION_TOLERANCE_SECS: f64 = 2.0;
 
 impl LrclibProvider {
     /// Search by track name only and match duration within ±2 seconds
-    async fn search_by_track_name(
-        &self,
-        query: &LyricsQuery,
-    ) -> Result<FetchedLyrics, CoreError> {
+    async fn search_by_track_name(&self, query: &LyricsQuery) -> Result<FetchedLyrics, CoreError> {
         // Search with just track name
         let url = format!(
             "{}/search?track_name={}",
@@ -152,13 +148,13 @@ impl LrclibProvider {
             urlencoding::encode(&query.track_name)
         );
 
-        info!(target: LOG_TARGET, "LRCLIB GET (search by track): {}", url);
+        info!("LRCLIB GET (search by track): {}", url);
 
         let response = self.client.get(&url).send().await?;
-        info!(target: LOG_TARGET, "LRCLIB response status: {}", response.status());
+        info!("LRCLIB response status: {}", response.status());
 
         if !response.status().is_success() {
-            warn!(target: LOG_TARGET, "LRCLIB search returned status: {}", response.status());
+            warn!("LRCLIB search returned status: {}", response.status());
             // Fall back to full search with artist + track
             return self.search_fallback(query).await;
         }
@@ -166,7 +162,7 @@ impl LrclibProvider {
         let results: Vec<LrclibResponse> = response.json().await?;
 
         if results.is_empty() {
-            info!(target: LOG_TARGET, "LRCLIB search by track name returned no results, trying full search");
+            info!("LRCLIB search by track name returned no results, trying full search");
             return self.search_fallback(query).await;
         }
 
@@ -185,7 +181,7 @@ impl LrclibProvider {
         };
 
         if filtered.is_empty() {
-            info!(target: LOG_TARGET, "LRCLIB search by track name: no results within duration tolerance, trying full search");
+            info!("LRCLIB search by track name: no results within duration tolerance, trying full search");
             return self.search_fallback(query).await;
         }
 
@@ -201,19 +197,18 @@ impl LrclibProvider {
 
         if let Some(result) = best {
             info!(
-                target: LOG_TARGET,
                 "LRCLIB found match by track name + duration (id: {}, artist: {}, duration: {:?})",
                 result.id, result.artist_name, result.duration
             );
             Ok(Self::parse_response(result))
         } else {
-            info!(target: LOG_TARGET, "LRCLIB search by track name: no usable lyrics, trying full search");
+            info!("LRCLIB search by track name: no usable lyrics, trying full search");
             self.search_fallback(query).await
         }
     }
 
     async fn search_fallback(&self, query: &LyricsQuery) -> Result<FetchedLyrics, CoreError> {
-        info!(target: LOG_TARGET, "Trying LRCLIB search endpoint with artist + track as final fallback");
+        info!("Trying LRCLIB search endpoint with artist + track as final fallback");
 
         let search_query = format!("{} {}", query.artist_name, query.track_name);
         let url = format!(
@@ -222,10 +217,10 @@ impl LrclibProvider {
             urlencoding::encode(&search_query)
         );
 
-        info!(target: LOG_TARGET, "LRCLIB GET (full search): {}", url);
+        info!("LRCLIB GET (full search): {}", url);
 
         let response = self.client.get(&url).send().await?;
-        info!(target: LOG_TARGET, "LRCLIB response status: {}", response.status());
+        info!("LRCLIB response status: {}", response.status());
 
         if !response.status().is_success() {
             return Err(CoreError::LyricsProviderFailed {
@@ -256,7 +251,6 @@ impl LrclibProvider {
         match best {
             Some(result) => {
                 info!(
-                    target: LOG_TARGET,
                     "LRCLIB found match via full search (id: {}, artist: {})",
                     result.id, result.artist_name
                 );
@@ -273,7 +267,7 @@ impl LrclibProvider {
         let provider_id = result.id.to_string();
 
         if result.instrumental {
-            debug!(target: LOG_TARGET, "Track is instrumental (lrclib id: {})", result.id);
+            debug!("Track is instrumental (lrclib id: {})", result.id);
             return FetchedLyrics {
                 result: LyricsResult::NotFound,
                 provider_id,
@@ -285,14 +279,18 @@ impl LrclibProvider {
             if !synced.trim().is_empty() {
                 match LrcFile::parse(&synced) {
                     Ok(lrc) => {
-                        debug!(target: LOG_TARGET, "Got synced lyrics with {} lines (lrclib id: {})", lrc.lines.len(), result.id);
+                        debug!(
+                            "Got synced lyrics with {} lines (lrclib id: {})",
+                            lrc.lines.len(),
+                            result.id
+                        );
                         return FetchedLyrics {
                             result: LyricsResult::Synced(lrc),
                             provider_id,
                         };
                     }
                     Err(e) => {
-                        warn!(target: LOG_TARGET, "Failed to parse synced lyrics: {}", e);
+                        warn!("Failed to parse synced lyrics: {}", e);
                     }
                 }
             }
@@ -301,7 +299,7 @@ impl LrclibProvider {
         // Fall back to plain lyrics
         if let Some(plain) = result.plain_lyrics {
             if !plain.trim().is_empty() {
-                debug!(target: LOG_TARGET, "Got plain lyrics (lrclib id: {})", result.id);
+                debug!("Got plain lyrics (lrclib id: {})", result.id);
                 return FetchedLyrics {
                     result: LyricsResult::Unsynced(plain),
                     provider_id,

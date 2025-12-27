@@ -16,8 +16,6 @@ const OAUTH_CALLBACK_TIMEOUT_SECS: u64 = 600;
 /// Refresh token proactively if it expires within this many seconds
 const PROACTIVE_REFRESH_THRESHOLD_SECS: i64 = 60;
 
-const LOG_TARGET: &str = "versualizer::spotify::oauth";
-
 /// Persisted token data
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct PersistedToken {
@@ -45,9 +43,9 @@ impl TryFrom<PersistedToken> for Token {
         Ok(Self {
             access_token: persisted.access_token,
             refresh_token: persisted.refresh_token,
-            expires_at: persisted.expires_at.and_then(|ts| {
-                chrono::DateTime::from_timestamp(ts, 0)
-            }),
+            expires_at: persisted
+                .expires_at
+                .and_then(|ts| chrono::DateTime::from_timestamp(ts, 0)),
             expires_in: chrono::TimeDelta::zero(),
             scopes: persisted.scopes.into_iter().collect(),
         })
@@ -99,9 +97,13 @@ impl SpotifyOAuth {
     async fn lock_token(
         &self,
     ) -> Result<futures::lock::MutexGuard<'_, Option<Token>>, SpotifyError> {
-        self.client.token.lock().await.map_err(|_| SpotifyError::AuthFailed {
-            reason: "Failed to acquire token lock".to_string(),
-        })
+        self.client
+            .token
+            .lock()
+            .await
+            .map_err(|_| SpotifyError::AuthFailed {
+                reason: "Failed to acquire token lock".to_string(),
+            })
     }
 
     /// Try to load cached token
@@ -111,7 +113,7 @@ impl SpotifyOAuth {
     /// Returns an error if the token file cannot be read, parsed, or the token cannot be refreshed.
     pub async fn load_cached_token(&self) -> Result<bool, SpotifyError> {
         if !self.token_path.exists() {
-            debug!(target: LOG_TARGET, "No cached token found");
+            info!("No cached token file found at {:?}", self.token_path);
             return Ok(false);
         }
 
@@ -121,16 +123,17 @@ impl SpotifyOAuth {
 
         // Check if token is expired
         if token.is_expired() {
-            info!(target: LOG_TARGET, "Cached token is expired, will need to refresh");
             if token.refresh_token.is_some() {
+                info!("Cached token is expired but has refresh token, attempting refresh...");
                 *self.lock_token().await? = Some(token);
                 return self.refresh_token().await.map(|()| true);
             }
+            info!("Cached token is expired and has no refresh token, re-authentication required");
             return Ok(false);
         }
 
         *self.lock_token().await? = Some(token);
-        info!(target: LOG_TARGET, "Loaded cached Spotify token");
+        info!("Loaded valid cached Spotify token");
         Ok(true)
     }
 
@@ -147,7 +150,7 @@ impl SpotifyOAuth {
 
             let content = serde_json::to_string_pretty(&persisted)?;
             fs::write(&self.token_path, content)?;
-            debug!(target: LOG_TARGET, "Saved Spotify token to {:?}", self.token_path);
+            debug!("Saved Spotify token to {:?}", self.token_path);
         }
         Ok(())
     }
@@ -158,7 +161,7 @@ impl SpotifyOAuth {
     ///
     /// Returns an error if the token refresh fails or the token cannot be saved.
     pub async fn refresh_token(&self) -> Result<(), SpotifyError> {
-        info!(target: LOG_TARGET, "Refreshing Spotify access token");
+        info!("Refreshing Spotify access token");
 
         self.client
             .refresh_token()
@@ -195,7 +198,7 @@ impl SpotifyOAuth {
     /// Check if token needs refresh (expires within threshold or no token).
     fn check_needs_refresh(token_opt: Option<&Token>) -> bool {
         let Some(token) = token_opt else {
-            warn!(target: LOG_TARGET, "No token available for proactive refresh check");
+            warn!("No token available for proactive refresh check");
             return false;
         };
 
@@ -209,10 +212,8 @@ impl SpotifyOAuth {
 
         if seconds_until_expiry <= PROACTIVE_REFRESH_THRESHOLD_SECS {
             debug!(
-                target: LOG_TARGET,
                 "Token expires in {}s (threshold: {}s), refreshing proactively",
-                seconds_until_expiry,
-                PROACTIVE_REFRESH_THRESHOLD_SECS
+                seconds_until_expiry, PROACTIVE_REFRESH_THRESHOLD_SECS
             );
             true
         } else {
@@ -247,7 +248,7 @@ impl SpotifyOAuth {
             })?;
 
         self.save_token().await?;
-        info!(target: LOG_TARGET, "Successfully authenticated with Spotify");
+        info!("Successfully authenticated with Spotify");
         Ok(())
     }
 
@@ -274,7 +275,7 @@ impl SpotifyOAuth {
         // Wait for callback
         let code = Self::wait_for_callback(rx, listener, app).await?;
 
-        info!(target: LOG_TARGET, "Received authorization code, exchanging for token...");
+        info!("Received authorization code, exchanging for token...");
         self.handle_callback(&code).await
     }
 
@@ -284,8 +285,12 @@ impl SpotifyOAuth {
     ///
     /// Returns an error if authentication or token refresh fails.
     pub async fn ensure_authenticated(&self) -> Result<(), SpotifyError> {
+        info!("Checking for cached Spotify token...");
+
         // Try loading cached token
         if self.load_cached_token().await? {
+            info!("Valid cached token found, skipping OAuth server");
+
             // Check if we need to refresh
             let needs_refresh = {
                 let token_guard = self.lock_token().await?;
@@ -293,12 +298,14 @@ impl SpotifyOAuth {
             };
 
             if needs_refresh {
+                info!("Token needs refresh, refreshing...");
                 self.refresh_token().await?;
             }
             return Ok(());
         }
 
         // No valid cached token, need to authenticate
+        info!("No valid cached token, starting OAuth server for interactive authentication...");
         self.authenticate_interactive().await
     }
 
@@ -379,7 +386,11 @@ impl SpotifyOAuth {
     ) -> Result<(tokio::net::TcpListener, SocketAddr), SpotifyError> {
         let addr: SocketAddr = format!(
             "{}:{}",
-            if host == "localhost" { "127.0.0.1" } else { host },
+            if host == "localhost" {
+                "127.0.0.1"
+            } else {
+                host
+            },
             port
         )
         .parse()
@@ -387,11 +398,17 @@ impl SpotifyOAuth {
             reason: format!("Invalid address: {e}"),
         })?;
 
-        let listener = tokio::net::TcpListener::bind(addr).await.map_err(|e| SpotifyError::AuthFailed {
-            reason: format!("Failed to bind to {addr}: {e}"),
-        })?;
+        let listener =
+            tokio::net::TcpListener::bind(addr)
+                .await
+                .map_err(|e| SpotifyError::AuthFailed {
+                    reason: format!("Failed to bind to {addr}: {e}"),
+                })?;
 
-        info!(target: LOG_TARGET, "OAuth callback server listening on http://{}{}", addr, callback_path);
+        info!(
+            "OAuth callback server listening on http://{}{}",
+            addr, callback_path
+        );
         Ok((listener, addr))
     }
 
@@ -404,7 +421,7 @@ impl SpotifyOAuth {
         println!("╚════════════════════════════════════════════════════════════════╝\n");
 
         if let Err(e) = open::that(auth_url) {
-            warn!(target: LOG_TARGET, "Could not open browser automatically: {}", e);
+            warn!("Could not open browser automatically: {}", e);
             println!("Please open this URL manually:\n{auth_url}\n");
         }
 

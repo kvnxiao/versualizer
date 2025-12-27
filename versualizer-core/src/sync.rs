@@ -13,13 +13,9 @@ pub enum SyncEvent {
         position: Duration,
     },
     /// Playback was paused
-    PlaybackPaused {
-        position: Duration,
-    },
+    PlaybackPaused { position: Duration },
     /// Playback was resumed
-    PlaybackResumed {
-        position: Duration,
-    },
+    PlaybackResumed { position: Duration },
     /// Playback stopped (no track playing)
     PlaybackStopped,
     /// Track changed to a new track
@@ -28,23 +24,15 @@ pub enum SyncEvent {
         position: Duration,
     },
     /// Regular position sync update
-    PositionSync {
-        position: Duration,
-    },
+    PositionSync { position: Duration },
     /// A seek occurred within the current track
-    SeekOccurred {
-        position: Duration,
-    },
+    SeekOccurred { position: Duration },
     /// Lyrics were loaded for current track
-    LyricsLoaded {
-        lyrics: LrcFile,
-    },
+    LyricsLoaded { lyrics: LrcFile },
     /// No lyrics found for current track
     LyricsNotFound,
     /// Error occurred
-    Error {
-        message: String,
-    },
+    Error { message: String },
 }
 
 /// Sync engine state
@@ -61,7 +49,7 @@ pub struct SyncEngine {
 
 impl SyncEngine {
     /// Create a new sync engine
-    #[must_use] 
+    #[must_use]
     pub fn new() -> Arc<Self> {
         let (event_tx, _) = broadcast::channel(64);
 

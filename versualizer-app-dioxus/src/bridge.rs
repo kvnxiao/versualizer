@@ -4,8 +4,6 @@ use std::sync::Arc;
 use tracing::info;
 use versualizer_core::{DurationExt, SyncEngine, SyncEvent};
 
-const LOG_TARGET: &str = "versualizer::bridge";
-
 /// Bridge `SyncEngine` events to Dioxus signals, with local playback timing.
 ///
 /// This combines two responsibilities:
@@ -35,11 +33,11 @@ pub fn use_sync_engine_bridge(sync_engine: &Arc<SyncEngine>, karaoke: KaraokeSta
                         handle_sync_event(event, karaoke, timer);
                     }
                     Err(tokio::sync::broadcast::error::RecvError::Closed) => {
-                        info!(target: LOG_TARGET, "Sync event channel closed");
+                        info!("Sync event channel closed");
                         break;
                     }
                     Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
-                        info!(target: LOG_TARGET, "Missed {} sync events", n);
+                        info!("Missed {} sync events", n);
                     }
                 }
             }
@@ -87,11 +85,7 @@ fn handle_sync_event(
         // === Lyrics events ===
         SyncEvent::LyricsLoaded { lyrics } => {
             karaoke.set_lyrics(&lyrics);
-            info!(
-                target: LOG_TARGET,
-                "Loaded {} precomputed lyric lines",
-                lyrics.lines.len()
-            );
+            info!("Loaded {} precomputed lyric lines", lyrics.lines.len());
         }
         SyncEvent::LyricsNotFound => {
             karaoke.clear_lyrics();

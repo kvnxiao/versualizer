@@ -16,9 +16,6 @@ use versualizer_core::providers::LrclibProvider;
 use versualizer_core::{Config, LyricsCache, LyricsProvider, SyncEngine, SyncEvent};
 use versualizer_spotify::{LyricsFetcher, SpotifyLyricsProvider, SpotifyOAuth, SpotifyPoller};
 
-const LOG_TARGET: &str = "versualizer::app";
-const LOG_TARGET_SYNC: &str = "versualizer::sync::events";
-
 fn main() {
     // Initialize logging
     // Filter out noisy rspotify HTTP request logs
@@ -56,7 +53,7 @@ fn main() {
         match LyricsCache::new().await {
             Ok(cache) => Arc::new(cache),
             Err(e) => {
-                error!(target: LOG_TARGET, "Failed to initialize lyrics cache: {}", e);
+                error!("Failed to initialize lyrics cache: {}", e);
                 std::process::exit(1);
             }
         }
@@ -66,14 +63,14 @@ fn main() {
     let providers = create_providers(&config);
 
     let provider_names: Vec<_> = providers.iter().map(|p| p.name()).collect();
-    info!(target: LOG_TARGET, "Initialized {} lyrics provider(s): {:?}", providers.len(), provider_names);
+    info!(
+        "Initialized {} lyrics provider(s): {:?}",
+        providers.len(),
+        provider_names
+    );
 
     // Create lyrics fetcher
-    let lyrics_fetcher = Arc::new(LyricsFetcher::new(
-        sync_engine.clone(),
-        cache,
-        providers,
-    ));
+    let lyrics_fetcher = Arc::new(LyricsFetcher::new(sync_engine.clone(), cache, providers));
 
     // Spawn background tasks
     runtime.spawn(start_spotify_poller(config.clone(), sync_engine.clone()));
@@ -157,38 +154,36 @@ fn create_providers(config: &Config) -> Vec<Box<dyn LyricsProvider>> {
         .filter_map(|provider_type| -> Option<Box<dyn LyricsProvider>> {
             match provider_type {
                 LyricsProviderType::Lrclib => {
-                    info!(target: LOG_TARGET, "Initializing LRCLIB provider");
+                    info!("Initializing LRCLIB provider");
                     match LrclibProvider::new() {
                         Ok(provider) => Some(Box::new(provider)),
                         Err(e) => {
-                            error!(target: LOG_TARGET, "Failed to create LRCLIB provider: {}", e);
+                            error!("Failed to create LRCLIB provider: {}", e);
                             None
                         }
                     }
                 }
-                LyricsProviderType::SpotifyLyrics => {
-                    config.spotify.sp_dc.as_ref().map_or_else(
-                        || {
-                            info!(target: LOG_TARGET, "Skipping Spotify lyrics provider: sp_dc not configured");
+                LyricsProviderType::SpotifyLyrics => config.spotify.sp_dc.as_ref().map_or_else(
+                    || {
+                        info!("Skipping Spotify lyrics provider: sp_dc not configured");
+                        None
+                    },
+                    |sp_dc| {
+                        if sp_dc.is_empty() {
+                            info!("Skipping Spotify lyrics provider: sp_dc is empty");
                             None
-                        },
-                        |sp_dc| {
-                            if sp_dc.is_empty() {
-                                info!(target: LOG_TARGET, "Skipping Spotify lyrics provider: sp_dc is empty");
-                                None
-                            } else {
-                                info!(target: LOG_TARGET, "Initializing Spotify lyrics provider (sp_dc configured)");
-                                match SpotifyLyricsProvider::new(sp_dc) {
-                                    Ok(provider) => Some(Box::new(provider) as Box<dyn LyricsProvider>),
-                                    Err(e) => {
-                                        error!(target: LOG_TARGET, "Failed to create Spotify lyrics provider: {}", e);
-                                        None
-                                    }
+                        } else {
+                            info!("Initializing Spotify lyrics provider (sp_dc configured)");
+                            match SpotifyLyricsProvider::new(sp_dc) {
+                                Ok(provider) => Some(Box::new(provider) as Box<dyn LyricsProvider>),
+                                Err(e) => {
+                                    error!("Failed to create Spotify lyrics provider: {}", e);
+                                    None
                                 }
                             }
-                        },
-                    )
-                }
+                        }
+                    },
+                ),
             }
         })
         .collect()
@@ -196,7 +191,7 @@ fn create_providers(config: &Config) -> Vec<Box<dyn LyricsProvider>> {
 
 /// Start the Spotify poller to fetch playback state
 async fn start_spotify_poller(config: Config, sync_engine: Arc<SyncEngine>) {
-    info!(target: LOG_TARGET, "Initializing Spotify OAuth...");
+    info!("Initializing Spotify Web API poller...");
 
     let oauth = match SpotifyOAuth::new(
         &config.spotify.client_id,
@@ -205,18 +200,18 @@ async fn start_spotify_poller(config: Config, sync_engine: Arc<SyncEngine>) {
     ) {
         Ok(oauth) => Arc::new(oauth),
         Err(e) => {
-            error!(target: LOG_TARGET, "Failed to create Spotify OAuth: {}", e);
+            error!("Failed to create Spotify OAuth: {}", e);
             return;
         }
     };
 
     // Ensure we're authenticated
     if let Err(e) = oauth.ensure_authenticated().await {
-        error!(target: LOG_TARGET, "Spotify authentication failed: {}", e);
+        error!("Spotify authentication failed: {}", e);
         return;
     }
 
-    info!(target: LOG_TARGET, "Spotify authenticated successfully!");
+    info!("Spotify authenticated successfully!");
 
     // Create and start the poller
     let poller = Arc::new(SpotifyPoller::new(
@@ -225,14 +220,17 @@ async fn start_spotify_poller(config: Config, sync_engine: Arc<SyncEngine>) {
         config.spotify.poll_interval_ms,
     ));
 
-    info!(target: LOG_TARGET, "Starting Spotify poller (interval: {}ms)", config.spotify.poll_interval_ms);
+    info!(
+        "Starting Spotify poller (interval: {}ms)",
+        config.spotify.poll_interval_ms
+    );
     let handle = poller.start();
     let _ = handle.await;
 }
 
 /// Start the lyrics fetcher to download and cache lyrics
 async fn start_lyrics_fetcher(lyrics_fetcher: Arc<LyricsFetcher>) {
-    info!(target: LOG_TARGET, "Starting lyrics fetcher...");
+    info!("Starting lyrics fetcher...");
     let handle = lyrics_fetcher.start();
     let _ = handle.await;
 }
@@ -247,57 +245,48 @@ async fn log_sync_events(sync_engine: Arc<SyncEngine>) {
                 match &event {
                     SyncEvent::PlaybackStarted { track, position } => {
                         info!(
-                            target: LOG_TARGET_SYNC,
                             "Playback started: {} - {} (at {:?})",
                             track.artist, track.name, position
                         );
                     }
                     SyncEvent::PlaybackPaused { position } => {
-                        info!(target: LOG_TARGET_SYNC, "Playback paused at {:?}", position);
+                        info!("Playback paused at {:?}", position);
                     }
                     SyncEvent::PlaybackResumed { position } => {
-                        info!(target: LOG_TARGET_SYNC, "Playback resumed at {:?}", position);
+                        info!("Playback resumed at {:?}", position);
                     }
                     SyncEvent::PlaybackStopped => {
-                        info!(target: LOG_TARGET_SYNC, "Playback stopped");
+                        info!("Playback stopped");
                     }
                     SyncEvent::TrackChanged { track, position } => {
                         info!(
-                            target: LOG_TARGET_SYNC,
                             "Track changed: {} - {} [{}] (at {:?})",
                             track.artist, track.name, track.album, position
                         );
                     }
-                    SyncEvent::PositionSync { position } => {
-                        // Log position updates less frequently (every 5 seconds worth)
-                        if position.as_secs() % 5 == 0 && position.subsec_millis() < 1100 {
-                            info!(target: LOG_TARGET_SYNC, "Position: {:?}", position);
-                        }
+                    SyncEvent::PositionSync { .. } => {
+                        // Timer position already logged by spotify::poller
                     }
                     SyncEvent::SeekOccurred { position } => {
-                        info!(target: LOG_TARGET_SYNC, "Seek to {:?}", position);
+                        info!("Seek to {:?}", position);
                     }
                     SyncEvent::LyricsLoaded { lyrics } => {
-                        info!(
-                            target: LOG_TARGET_SYNC,
-                            "Lyrics loaded: {} lines",
-                            lyrics.lines.len()
-                        );
+                        info!("Lyrics loaded: {} lines", lyrics.lines.len());
                     }
                     SyncEvent::LyricsNotFound => {
-                        info!(target: LOG_TARGET_SYNC, "No lyrics found for current track");
+                        info!("No lyrics found for current track");
                     }
                     SyncEvent::Error { message } => {
-                        error!(target: LOG_TARGET_SYNC, "Sync error: {}", message);
+                        error!("Sync error: {}", message);
                     }
                 }
             }
             Err(tokio::sync::broadcast::error::RecvError::Closed) => {
-                info!(target: LOG_TARGET_SYNC, "Sync event channel closed");
+                info!("Sync event channel closed");
                 break;
             }
             Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
-                info!(target: LOG_TARGET_SYNC, "Missed {} sync events", n);
+                info!("Missed {} sync events", n);
             }
         }
     }

@@ -6,7 +6,7 @@ use std::path::PathBuf;
 pub const SPOTIFY_TOKEN_CACHE_FILE_NAME: &str = ".spotify_token_cache.json";
 
 /// Get the Spotify token cache file path (~/.`config/versualizer/.spotify_token_cache.json`)
-#[must_use] 
+#[must_use]
 pub fn spotify_token_cache_path() -> PathBuf {
     versualizer_core::paths::config_dir().join(SPOTIFY_TOKEN_CACHE_FILE_NAME)
 }

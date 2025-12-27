@@ -7,8 +7,6 @@ use std::path::Path;
 use tokio_rusqlite::Connection;
 use tracing::{debug, info};
 
-const LOG_TARGET: &str = "versualizer::cache";
-
 const SCHEMA_SQL: &str = r"
 -- Core lyrics storage (source-agnostic)
 CREATE TABLE IF NOT EXISTS lyrics (
@@ -81,15 +79,13 @@ impl LyricsType {
 
 impl CachedLyrics {
     /// Convert cached content to `LyricsResult`
-    #[must_use] 
+    #[must_use]
     pub fn to_lyrics_result(&self) -> LyricsResult {
         match self.lyrics_type {
-            LyricsType::Synced => {
-                LrcFile::parse(&self.content).map_or_else(
-                    |_| LyricsResult::Unsynced(self.content.clone()),
-                    LyricsResult::Synced,
-                )
-            }
+            LyricsType::Synced => LrcFile::parse(&self.content).map_or_else(
+                |_| LyricsResult::Unsynced(self.content.clone()),
+                LyricsResult::Synced,
+            ),
             LyricsType::Unsynced => LyricsResult::Unsynced(self.content.clone()),
         }
     }
@@ -126,7 +122,7 @@ impl LyricsCache {
     ///
     /// Returns an error if the database cannot be opened or initialized.
     pub async fn open(path: &Path) -> Result<Self> {
-        info!(target: LOG_TARGET, "Opening lyrics cache database at {:?}", path);
+        info!("Opening lyrics cache database at {:?}", path);
 
         // Ensure parent directory exists
         if let Some(parent) = path.parent() {
@@ -144,7 +140,7 @@ impl LyricsCache {
         })
         .await?;
 
-        info!(target: LOG_TARGET, "Lyrics cache database initialized");
+        info!("Lyrics cache database initialized");
         Ok(Self { conn })
     }
 
@@ -159,7 +155,6 @@ impl LyricsCache {
         provider_track_id: &str,
     ) -> Result<Option<CachedLyrics>> {
         debug!(
-            target: LOG_TARGET,
             "Looking up lyrics in cache by provider ID: {}:{}",
             provider, provider_track_id
         );
@@ -299,7 +294,6 @@ impl LyricsCache {
         lyrics_provider_id: &str,
     ) -> Result<i64> {
         info!(
-            target: LOG_TARGET,
             "Storing lyrics in cache: {} - {} (lyrics_provider: {}, lyrics_provider_id: {}, provider: {}:{})",
             metadata.artist, metadata.track, lyrics_provider, lyrics_provider_id, provider, provider_track_id
         );
@@ -438,7 +432,12 @@ fn serialize_lrc(lrc: &LrcFile) -> String {
             // Enhanced LRC format
             let _ = write!(output, "[{timestamp}]");
             for word in words {
-                let _ = write!(output, " <{}> {}", format_timestamp(word.start_time), word.text);
+                let _ = write!(
+                    output,
+                    " <{}> {}",
+                    format_timestamp(word.start_time),
+                    word.text
+                );
             }
             output.push('\n');
         } else {

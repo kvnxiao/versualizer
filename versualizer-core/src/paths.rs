@@ -12,7 +12,7 @@ pub const CONFIG_FILE_NAME: &str = "config.toml";
 pub const LYRICS_CACHE_DB_FILE_NAME: &str = "lyrics_cache.db";
 
 /// Get the configuration directory path (~/.config/versualizer/)
-#[must_use] 
+#[must_use]
 pub fn config_dir() -> PathBuf {
     dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("."))
@@ -21,13 +21,13 @@ pub fn config_dir() -> PathBuf {
 }
 
 /// Get the config file path (~/.config/versualizer/config.toml)
-#[must_use] 
+#[must_use]
 pub fn config_path() -> PathBuf {
     config_dir().join(CONFIG_FILE_NAME)
 }
 
 /// Get the lyrics cache database path (~/.`config/versualizer/lyrics_cache.db`)
-#[must_use] 
+#[must_use]
 pub fn lyrics_cache_db_path() -> PathBuf {
     config_dir().join(LYRICS_CACHE_DB_FILE_NAME)
 }
