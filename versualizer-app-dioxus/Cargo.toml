@@ -1,5 +1,5 @@
 [package]
-name = "versualizer-app-freya"
+name = "versualizer-app-dioxus"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -16,20 +16,23 @@ path = "src/main.rs"
 [dependencies]
 versualizer-core = { path = "../versualizer-core" }
 versualizer-spotify = { path = "../versualizer-spotify" }
+
+# Dioxus desktop
+dioxus = { version = "0.7", features = ["desktop"] }
+
+# Async runtime
 tokio = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-freya = { workspace = true }
-freya-radio = { workspace = true }
+
+# Async channels and streams
 futures-channel = { workspace = true }
 futures-lite = { workspace = true }
-thiserror = { workspace = true }
+
+# Error handling
 anyhow = { workspace = true }
+
+# Logging
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
-directories = { workspace = true }
-global-hotkey = { workspace = true }
-tokio-util = { workspace = true }
 
 [lints]
 workspace = true

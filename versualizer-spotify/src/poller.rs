@@ -114,76 +114,77 @@ impl SpotifyPoller {
 
         let request_latency = request_start.elapsed();
 
-        let state = match playback {
-            Some(context) => {
-                // Extract track info and duration together to avoid borrow issues
-                let (track_info, duration) = match &context.item {
-                    Some(rspotify::model::PlayableItem::Track(track)) => {
-                        let artists = track
-                            .artists
-                            .iter()
-                            .map(|a| a.name.as_str())
-                            .collect::<Vec<_>>()
-                            .join(", ");
-
-                        let dur = track.duration.to_std().unwrap_or(Duration::ZERO);
-                        // Use just the ID part, not the full URI (spotify:track:xxx -> xxx)
-                        let track_id = track.id.as_ref().map(|id| id.id().to_string()).unwrap_or_default();
-                        let info = TrackInfo::new(
-                            track_id,
-                            &track.name,
-                            artists,
-                            &track.album.name,
-                            dur,
-                        );
-                        (Some(info), dur)
-                    }
-                    Some(rspotify::model::PlayableItem::Episode(episode)) => {
-                        let dur = episode.duration.to_std().unwrap_or(Duration::ZERO);
-                        // Use just the ID part, not the full URI
-                        let episode_id = episode.id.id().to_string();
-                        let info = TrackInfo::new(
-                            episode_id,
-                            &episode.name,
-                            &episode.show.name,
-                            "Podcast",
-                            dur,
-                        );
-                        (Some(info), dur)
-                    }
-                    None => (None, Duration::ZERO),
-                };
-
-                // Log full playback context when track changes
-                let current_state = self.sync_engine.state().await;
-                let track_changed = current_state.track_changed(&PlaybackState::new(
-                    context.is_playing,
-                    track_info.clone(),
-                    Duration::ZERO,
-                    duration,
-                ));
-
-                if track_changed {
-                    info!(
-                        target: LOG_TARGET_POLLER,
-                        "Track changed - full Spotify playback context: {:#?}",
-                        context
-                    );
+        let state = if let Some(context) = playback {
+            // Log basic playback info
+            let status = if context.is_playing { "playing" } else { "paused" };
+            let track_desc = match &context.item {
+                Some(rspotify::model::PlayableItem::Track(t)) => {
+                    let artist = t.artists.first().map_or("Unknown", |a| a.name.as_str());
+                    format!("{} - {}", artist, t.name)
                 }
+                Some(rspotify::model::PlayableItem::Episode(e)) => {
+                    format!("{} - {}", e.show.name, e.name)
+                }
+                None => "Unknown track".into(),
+            };
+            info!(target: LOG_TARGET_POLLER, "Spotify: {} | {}", status, track_desc);
 
-                // Compensate for network latency
-                // Assume position is from halfway through the request
-                let latency_compensation = request_latency / 2;
-                let position = context
-                    .progress
-                    .map_or(Duration::ZERO, |p| p.to_std().unwrap_or(Duration::ZERO) + latency_compensation);
+            // Extract track info and duration together to avoid borrow issues
+            let (track_info, duration) = match &context.item {
+                Some(rspotify::model::PlayableItem::Track(track)) => {
+                    let artists = track
+                        .artists
+                        .iter()
+                        .map(|a| a.name.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ");
 
-                PlaybackState::new(context.is_playing, track_info, position, duration)
-            }
-            None => {
-                // No active playback
-                PlaybackState::default()
-            }
+                    let dur = track.duration.to_std().unwrap_or(Duration::ZERO);
+                    // Use just the ID part, not the full URI (spotify:track:xxx -> xxx)
+                    let track_id = track
+                        .id
+                        .as_ref()
+                        .map(|id| id.id().to_string())
+                        .unwrap_or_default();
+                    let info = TrackInfo::new(
+                        track_id,
+                        &track.name,
+                        artists,
+                        &track.album.name,
+                        dur,
+                    );
+                    (Some(info), dur)
+                }
+                Some(rspotify::model::PlayableItem::Episode(episode)) => {
+                    let dur = episode.duration.to_std().unwrap_or(Duration::ZERO);
+                    // Use just the ID part, not the full URI
+                    let episode_id = episode.id.id().to_string();
+                    let info = TrackInfo::new(
+                        episode_id,
+                        &episode.name,
+                        &episode.show.name,
+                        "Podcast",
+                        dur,
+                    );
+                    (Some(info), dur)
+                }
+                None => (None, Duration::ZERO),
+            };
+
+            // Compensate for network latency
+            // Assume position is from halfway through the request
+            let latency_compensation = request_latency / 2;
+            let position = context
+                .progress
+                .map_or(Duration::ZERO, |p| {
+                    p.to_std().unwrap_or(Duration::ZERO) + latency_compensation
+                });
+
+            PlaybackState::new(context.is_playing, track_info, position, duration)
+        } else {
+            // No active playback - this happens when no Spotify device is active
+            info!(target: LOG_TARGET_POLLER, "Spotify: no active playback");
+            PlaybackState::default()
         };
 
         debug!(
@@ -243,6 +244,18 @@ impl LyricsFetcher {
         info!(target: LOG_TARGET_FETCHER, "Starting lyrics fetcher");
 
         let mut rx = self.sync_engine.subscribe();
+
+        // Check if there's already a track loaded on startup
+        if let Some(track) = self.sync_engine.current_track().await {
+            if self.sync_engine.lyrics().await.is_none() {
+                info!(
+                    target: LOG_TARGET_FETCHER,
+                    "Found existing track on startup: {} - {}, fetching lyrics",
+                    track.artist, track.name
+                );
+                self.fetch_lyrics_for_track(&track).await;
+            }
+        }
 
         loop {
             tokio::select! {

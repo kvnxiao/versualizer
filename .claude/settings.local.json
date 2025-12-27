@@ -15,7 +15,9 @@
       "Bash(cargo clippy:*)",
       "Bash(grep:*)",
       "Bash(head:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(tree:*)",
+      "Bash(cargo doc:*)"
     ]
   }
 }

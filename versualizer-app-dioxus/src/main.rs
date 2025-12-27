@@ -1,14 +1,14 @@
 mod app;
+mod bridge;
+mod components;
 mod state;
 
-use crate::state::{AppChannel, AppState};
-use freya::prelude::*;
-use freya::winit::window::WindowLevel;
-use freya_radio::prelude::*;
-use futures_channel::mpsc::unbounded;
-use futures_lite::StreamExt;
+use crate::app::App;
+use crate::bridge::use_sync_engine_bridge;
+use crate::state::KaraokeState;
+use dioxus::desktop::{LogicalSize, WindowBuilder};
+use dioxus::prelude::*;
 use std::sync::Arc;
-use std::time::Duration;
 use tracing::{error, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 use versualizer_core::config::LyricsProviderType;
@@ -19,11 +19,14 @@ use versualizer_spotify::{LyricsFetcher, SpotifyLyricsProvider, SpotifyOAuth, Sp
 const LOG_TARGET: &str = "versualizer::app";
 const LOG_TARGET_SYNC: &str = "versualizer::sync::events";
 
-#[allow(clippy::too_many_lines)]
 fn main() {
     // Initialize logging
+    // Filter out noisy rspotify HTTP request logs
     tracing_subscriber::registry()
-        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
+        .with(
+            EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| EnvFilter::new("info,rspotify_http=warn")),
+        )
         .with(tracing_subscriber::fmt::layer())
         .init();
 
@@ -48,19 +51,85 @@ fn main() {
     // Initialize sync engine
     let sync_engine = SyncEngine::new();
 
-    // Initialize lyrics cache and fetcher
+    // Initialize lyrics cache
     let cache = runtime.block_on(async {
         match LyricsCache::new().await {
             Ok(cache) => Arc::new(cache),
             Err(e) => {
-                error!("Failed to initialize lyrics cache: {}", e);
+                error!(target: LOG_TARGET, "Failed to initialize lyrics cache: {}", e);
                 std::process::exit(1);
             }
         }
     });
 
     // Create lyrics providers based on config
-    let providers: Vec<Box<dyn LyricsProvider>> = config
+    let providers = create_providers(&config);
+
+    let provider_names: Vec<_> = providers.iter().map(|p| p.name()).collect();
+    info!(target: LOG_TARGET, "Initialized {} lyrics provider(s): {:?}", providers.len(), provider_names);
+
+    // Create lyrics fetcher
+    let lyrics_fetcher = Arc::new(LyricsFetcher::new(
+        sync_engine.clone(),
+        cache,
+        providers,
+    ));
+
+    // Spawn background tasks
+    runtime.spawn(start_spotify_poller(config.clone(), sync_engine.clone()));
+    runtime.spawn(start_lyrics_fetcher(lyrics_fetcher));
+    runtime.spawn(log_sync_events(sync_engine.clone()));
+
+    // Configure window
+    let window = WindowBuilder::new()
+        .with_title("Versualizer")
+        .with_transparent(true)
+        .with_decorations(false)
+        .with_always_on_top(true)
+        .with_inner_size(LogicalSize::new(
+            f64::from(config.ui.window.width),
+            f64::from(config.ui.window.height),
+        ));
+
+    // Disable window shadow on Windows for true overlay effect
+    #[cfg(target_os = "windows")]
+    let window = {
+        use dioxus::desktop::tao::platform::windows::WindowBuilderExtWindows;
+        window.with_undecorated_shadow(false)
+    };
+
+    // Embed CSS directly to avoid path resolution issues in desktop mode
+    let css = include_str!("../assets/style.css");
+    let custom_head = format!(r"<style>{css}</style>");
+
+    let dioxus_config = dioxus::desktop::Config::default()
+        .with_window(window)
+        .with_custom_head(custom_head);
+
+    // Launch Dioxus application
+    // Use with_context to inject SyncEngine before launch (since launch requires a fn pointer)
+    dioxus::LaunchBuilder::desktop()
+        .with_cfg(dioxus_config)
+        .with_context(sync_engine)
+        .launch(app);
+}
+
+/// Root component that sets up context and renders the app
+fn app() -> Element {
+    // Create karaoke state with granular signals
+    let karaoke = use_context_provider(KaraokeState::new);
+
+    // Get the sync engine from context (injected via with_context)
+    let sync_engine: Arc<SyncEngine> = use_context();
+
+    // Bridge SyncEngine events to Dioxus signals
+    use_sync_engine_bridge(sync_engine, karaoke);
+
+    rsx! { App {} }
+}
+
+fn create_providers(config: &Config) -> Vec<Box<dyn LyricsProvider>> {
+    config
         .lyrics
         .providers
         .iter()
@@ -101,143 +170,7 @@ fn main() {
                 }
             }
         })
-        .collect();
-
-    let provider_names: Vec<_> = providers.iter().map(|p| p.name()).collect();
-    info!(target: LOG_TARGET, "Initialized {} lyrics provider(s): {:?}", providers.len(), provider_names);
-
-    // Create lyrics fetcher
-    let lyrics_fetcher = Arc::new(LyricsFetcher::new(
-        sync_engine.clone(),
-        cache,
-        providers,
-    ));
-
-    // Create RadioStation for global UI state
-    let mut radio_station = RadioStation::<AppState, AppChannel>::create_global(AppState::default());
-
-    // Create channel to bridge SyncEngine events to RadioStation
-    let (tx, mut rx) = unbounded::<SyncEvent>();
-
-    // Spawn task to forward SyncEngine events to channel
-    runtime.spawn({
-        let sync_engine = sync_engine.clone();
-        async move {
-            let mut event_rx = sync_engine.subscribe();
-            while let Ok(event) = event_rx.recv().await {
-                let _ = tx.unbounded_send(event);
-            }
-        }
-    });
-
-    // Spawn background tasks
-    runtime.spawn(start_spotify_poller(config.clone(), sync_engine.clone()));
-    runtime.spawn(start_lyrics_fetcher(lyrics_fetcher));
-    runtime.spawn(log_sync_events(sync_engine));
-
-    // Launch the Freya application
-    launch(
-        LaunchConfig::new()
-            .with_future(async move {
-                // Process SyncEngine events and update RadioStation
-                while let Some(event) = rx.next().await {
-                    match event {
-                        SyncEvent::LyricsLoaded { lyrics } => {
-                            let mut state = radio_station.write_channel(AppChannel::Lyrics);
-                            state.lyrics = Some(lyrics);
-                        }
-                        SyncEvent::LyricsNotFound => {
-                            let mut state = radio_station.write_channel(AppChannel::Lyrics);
-                            state.lyrics = None;
-                        }
-                        SyncEvent::PositionSync { position } | SyncEvent::SeekOccurred { position } => {
-                            // Check if line changed
-                            let current_idx = {
-                                let state = radio_station.read();
-                                if let Some(ref lyrics) = state.lyrics {
-                                    let new_idx = lyrics.current_line_index(position);
-                                    if new_idx == state.current_line_index {
-                                        None
-                                    } else {
-                                        Some((new_idx, lyrics.clone()))
-                                    }
-                                } else {
-                                    None
-                                }
-                            };
-
-                            if let Some((new_idx, lyrics)) = current_idx {
-                                let mut state = radio_station.write_channel(AppChannel::LineChange);
-                                state.current_line_index = new_idx;
-                                if let Some(idx) = new_idx {
-                                    state.line_start_time = lyrics.lines[idx].start_time;
-                                    // Calculate duration to next line
-                                    let next_start = lyrics
-                                        .lines
-                                        .get(idx + 1)
-                                        .map_or(state.line_start_time + Duration::from_secs(5), |l| l.start_time);
-                                    #[allow(clippy::cast_possible_truncation)]
-                                    {
-                                        state.line_duration_ms = next_start
-                                            .saturating_sub(state.line_start_time)
-                                            .as_millis() as u64;
-                                    }
-                                }
-                            }
-                            // Animation handles smooth interpolation between line changes
-                        }
-                        SyncEvent::TrackChanged { .. } | SyncEvent::PlaybackStarted { .. } => {
-                            let mut state = radio_station.write_channel(AppChannel::PlaybackState);
-                            state.has_track = true;
-                            state.is_playing = true;
-                            // Clear lyrics until new ones load
-                            state.lyrics = None;
-                            state.current_line_index = None;
-                        }
-                        SyncEvent::PlaybackPaused { .. } => {
-                            radio_station
-                                .write_channel(AppChannel::PlaybackState)
-                                .is_playing = false;
-                        }
-                        SyncEvent::PlaybackResumed { .. } => {
-                            radio_station
-                                .write_channel(AppChannel::PlaybackState)
-                                .is_playing = true;
-                        }
-                        SyncEvent::PlaybackStopped => {
-                            let mut state = radio_station.write_channel(AppChannel::PlaybackState);
-                            state.has_track = false;
-                            state.is_playing = false;
-                            state.lyrics = None;
-                            state.current_line_index = None;
-                        }
-                        SyncEvent::Error { .. } => {
-                            // Errors are logged elsewhere
-                        }
-                    }
-                }
-            })
-            .with_fallback_font("Noto Sans CJK SC")
-            .with_fallback_font("Noto Sans CJK JP")
-            .with_fallback_font("Noto Sans CJK KR")
-            .with_fallback_font("Microsoft YaHei")
-            .with_fallback_font("PingFang SC")
-            .with_fallback_font("Segoe UI Emoji")
-            .with_window(
-                WindowConfig::new(FpRender::from_render(app::App { radio_station }))
-                    .with_title("Versualizer")
-                    .with_size(
-                        f64::from(config.ui.window.width),
-                        f64::from(config.ui.window.height),
-                    )
-                    .with_background(Color::TRANSPARENT)
-                    .with_decorations(false)
-                    .with_transparency(true)
-                    .with_window_handle(|window| {
-                        window.set_window_level(WindowLevel::AlwaysOnTop);
-                    }),
-            ),
-    );
+        .collect()
 }
 
 /// Start the Spotify poller to fetch playback state

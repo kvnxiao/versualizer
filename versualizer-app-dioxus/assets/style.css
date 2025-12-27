@@ -1,0 +1,91 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  font-size: 16px;
+  line-height: 1.5;
+  overflow: hidden;
+}
+
+body {
+  font-family: "Noto Sans CJK SC", "Noto Sans CJK JP", "Noto Sans CJK KR",
+               "Microsoft YaHei", "PingFang SC", "Segoe UI Emoji", sans-serif;
+}
+
+.container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(0, 0, 0, 0.5);
+}
+
+/* Karaoke container - holds all visible lines */
+.karaoke-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Individual karaoke line */
+.karaoke-line {
+  position: relative;
+  display: inline-block;
+  white-space: nowrap;
+  transition: opacity 0.3s ease;
+}
+
+.karaoke-line.current {
+  opacity: 1;
+  height: 1.5rem;
+  line-height: 1.5;
+}
+
+.karaoke-line.upcoming {
+  opacity: 0.5;
+  height: 1.2rem;
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+/* Karaoke text animation */
+@keyframes karaoke-fill {
+  from { clip-path: inset(0 100% 0 0); }
+  to { clip-path: inset(0 0 0 0); }
+}
+
+/* Background (unsung) text */
+.karaoke-background {
+  color: var(--unsung-color, white);
+}
+
+/* Foreground (sung) text with fill animation */
+.karaoke-foreground {
+  position: absolute;
+  left: 0;
+  top: 0;
+  white-space: nowrap;
+  color: var(--sung-color, lime);
+  clip-path: inset(0 100% 0 0);
+  animation: karaoke-fill var(--duration, 5s) linear forwards;
+  animation-play-state: var(--play-state, running);
+}
+
+/* Upcoming line text (no animation) */
+.karaoke-upcoming-text {
+  color: var(--unsung-color, white);
+}
+
+span {
+  user-select: none;
+  pointer-events: none;
+}

@@ -99,6 +99,16 @@ impl SyncEngine {
                     track: track.clone(),
                     position: new_state.position,
                 });
+                // Also emit play state so listeners know if track is playing or paused
+                if new_state.is_playing {
+                    let _ = self.event_tx.send(SyncEvent::PlaybackResumed {
+                        position: new_state.position,
+                    });
+                } else {
+                    let _ = self.event_tx.send(SyncEvent::PlaybackPaused {
+                        position: new_state.position,
+                    });
+                }
             } else {
                 let _ = self.event_tx.send(SyncEvent::PlaybackStopped);
             }

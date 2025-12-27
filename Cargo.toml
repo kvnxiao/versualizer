@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["versualizer-core", "versualizer-spotify", "versualizer-app-freya"]
+members = ["versualizer-core", "versualizer-spotify", "versualizer-app-dioxus"]
 
 [workspace.package]
 version = "0.1.0"
@@ -51,10 +51,6 @@ chrono = { version = "0.4", features = ["serde"] }
 urlencoding = "2"
 url = "2"
 open = "5"
-
-# GUI
-freya = { git = "https://github.com/marc2332/freya" }
-freya-radio = { git = "https://github.com/marc2332/freya" }
 
 # Async channels for UI
 futures-channel = "0.3"
