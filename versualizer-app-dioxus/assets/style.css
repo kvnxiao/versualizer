@@ -1,3 +1,12 @@
+:root {
+  /* Karaoke layout configuration */
+  --base-font-rem-size: 32px;
+  --line-gap: 8px;
+  --line-height: 1.5;
+  --current-font-size: 1rem;
+  --upcoming-font-size: 0.8rem;
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -8,7 +17,7 @@ html, body {
   width: 100%;
   height: 100%;
   background: transparent;
-  font-size: 16px;
+  font-size: var(--base-font-rem-size);
   line-height: 1.5;
   overflow: hidden;
 }
@@ -33,7 +42,13 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: var(--line-gap);
+  /* Reserve space for 3 lines (with line-height) + 2 gaps */
+  min-height: calc(
+    var(--current-font-size) * var(--line-height) +
+    var(--upcoming-font-size) * var(--line-height) * 2 +
+    var(--line-gap) * 2
+  );
 }
 
 /* Individual karaoke line */
@@ -46,15 +61,14 @@ body {
 
 .karaoke-line.current {
   opacity: 1;
-  height: 1.5rem;
-  line-height: 1.5;
+  font-size: var(--current-font-size);
+  line-height: var(--line-height);
 }
 
 .karaoke-line.upcoming {
   opacity: 0.5;
-  height: 1.2rem;
-  font-size: 0.8rem;
-  line-height: 1.5;
+  font-size: var(--upcoming-font-size);
+  line-height: var(--line-height);
 }
 
 /* Karaoke text animation */
