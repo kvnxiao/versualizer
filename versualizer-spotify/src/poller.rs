@@ -7,19 +7,6 @@ use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, warn};
 use versualizer_core::{DurationExt, PlaybackState, SyncEngine, TrackInfo};
 
-/// Format milliseconds as M:SS/M:SS timestamp (e.g., "0:26/3:23")
-fn format_timestamp(position_ms: u64, duration_ms: u64) -> String {
-    let pos_secs = position_ms / 1000;
-    let pos_mins = pos_secs / 60;
-    let pos_remaining_secs = pos_secs % 60;
-
-    let dur_secs = duration_ms / 1000;
-    let dur_mins = dur_secs / 60;
-    let dur_remaining_secs = dur_secs % 60;
-
-    format!("{pos_mins}:{pos_remaining_secs:02}/{dur_mins}:{dur_remaining_secs:02}")
-}
-
 /// Spotify playback state poller
 pub struct SpotifyPoller {
     oauth: Arc<SpotifyOAuth>,
@@ -125,30 +112,6 @@ impl SpotifyPoller {
         let request_latency = request_start.elapsed();
 
         let state = if let Some(context) = playback {
-            // Log basic playback info with timestamp
-            let status = if context.is_playing {
-                "▶️"
-            } else {
-                "⏸️"
-            };
-            let (track_desc, duration_ms) = match &context.item {
-                Some(rspotify::model::PlayableItem::Track(t)) => {
-                    let artist = t.artists.first().map_or("Unknown", |a| a.name.as_str());
-                    let dur_ms = u64::try_from(t.duration.num_milliseconds()).unwrap_or(0);
-                    (format!("{} - {}", artist, t.name), dur_ms)
-                }
-                Some(rspotify::model::PlayableItem::Episode(e)) => {
-                    let dur_ms = u64::try_from(e.duration.num_milliseconds()).unwrap_or(0);
-                    (format!("{} - {}", e.show.name, e.name), dur_ms)
-                }
-                None => ("Unknown track".into(), 0),
-            };
-            let position_ms = context
-                .progress
-                .map_or(0, |p| u64::try_from(p.num_milliseconds()).unwrap_or(0));
-            let timestamp = format_timestamp(position_ms, duration_ms);
-            info!("{}  {} | {}", status, timestamp, track_desc);
-
             // Extract track info and duration together to avoid borrow issues
             let (track_info, duration) = match &context.item {
                 Some(rspotify::model::PlayableItem::Track(track)) => {
