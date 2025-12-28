@@ -125,6 +125,7 @@ fn main() {
         .with_title("Versualizer")
         .with_transparent(true)
         .with_decorations(false)
+        .with_resizable(true)
         .with_always_on_top(true)
         .with_inner_size(LogicalSize::new(
             f64::from(config.ui.window.width_px),

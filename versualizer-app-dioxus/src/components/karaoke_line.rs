@@ -9,16 +9,6 @@ use dioxus_motion::prelude::*;
 const BUFFER_LINES_BEFORE: usize = 1;
 const BUFFER_LINES_AFTER: usize = 1;
 
-/// Layout constants that must match the CSS variables.
-/// These are used to calculate transform positions.
-const BASE_FONT_SIZE_PX: f32 = 32.0;
-const LINE_HEIGHT_MULTIPLIER: f32 = 1.5;
-const LINE_GAP_PX: f32 = 8.0;
-
-/// Calculate the total height of one line slot (font height + gap).
-const fn calculate_line_slot_height() -> f32 {
-    BASE_FONT_SIZE_PX * LINE_HEIGHT_MULTIPLIER + LINE_GAP_PX
-}
 
 /// Karaoke display component that shows current and upcoming lyrics
 /// with smooth animations powered by dioxus-motion.
@@ -42,12 +32,6 @@ pub fn KaraokeLine() -> Element {
 
     // Get visible lines with buffer
     let visible = karaoke.visible_lines(BUFFER_LINES_BEFORE, lines_after);
-
-    // Calculate container height based on visible lines
-    let line_slot_height = calculate_line_slot_height();
-    // Safe cast: visible_count is clamped to 1-3 in config, well within f32 range
-    #[allow(clippy::cast_precision_loss)]
-    let container_height = line_slot_height * (visible_count as f32);
 
     // Animated scroll offset - represents the current line index as a float
     // -1.0 for intro, 0.0+ for actual lines
@@ -78,9 +62,8 @@ pub fn KaraokeLine() -> Element {
         );
     });
 
-    // Container style with dynamic height
-    // Colors and styling are defined in theme.css
-    let container_style = format!("height: {container_height}px;");
+    // Set CSS variables from config (all calculations done in CSS)
+    let container_style = format!("--max-lines: {visible_count};");
 
     // Play state for CSS animation
     let play_state = if is_playing { "running" } else { "paused" };
@@ -143,50 +126,16 @@ pub fn KaraokeLine() -> Element {
             for (idx, line) in visible.iter().enumerate() {
                 {
                     // Calculate the absolute line index for this visible line
-                    // visible[0] corresponds to visible_start_idx in absolute terms
                     // Safe: idx is a small index into visible array (typically < 10 elements)
                     #[allow(clippy::cast_possible_wrap)]
                     let line_absolute_idx = visible_start_idx + i32::try_from(idx).unwrap_or(i32::MAX);
 
-                    // Calculate vertical offset using animated scroll value
-                    // Each line's position is: (line_absolute_idx - animated_offset) * line_slot_height
+                    // Distance from current line (used by CSS for scale and opacity calculations)
                     #[allow(clippy::cast_precision_loss)]
-                    let y_offset = ((line_absolute_idx as f32) - animated_offset) * line_slot_height;
+                    let distance = (line_absolute_idx as f32) - animated_offset;
 
-                    // Determine if this line is currently the "current" line
-                    // based on the animated offset (with some threshold)
-                    #[allow(clippy::cast_precision_loss)]
-                    let distance_from_current = (line_absolute_idx as f32) - animated_offset;
-                    let is_current = distance_from_current.abs() < 0.5
-                        && current_visible_idx == Some(idx);
-
-                    // Calculate scale based on distance from current
-                    // Smooth interpolation between current and upcoming scale
-                    let scale = if distance_from_current.abs() < 1.0 {
-                        // Interpolate between current and upcoming scale using mul_add for accuracy
-                        let t = distance_from_current.abs();
-                        config
-                            .layout
-                            .current_line_scale
-                            .mul_add(1.0 - t, config.layout.upcoming_line_scale * t)
-                    } else {
-                        config.layout.upcoming_line_scale
-                    };
-
-                    // Calculate opacity for buffer zone fade in/out effects
-                    // Lines in visible area have full opacity; buffer zones fade to 0
-                    #[allow(clippy::cast_precision_loss)]
-                    let visible_count_f32 = visible_count as f32;
-                    let opacity = if distance_from_current < 0.0 {
-                        // Above current (buffer zone above) - fade in
-                        0.0_f32.max(1.0 + distance_from_current)
-                    } else if distance_from_current >= visible_count_f32 {
-                        // Below visible area (buffer zone below) - fade out
-                        0.0_f32.max(1.0 - (distance_from_current - visible_count_f32 + 1.0))
-                    } else {
-                        // Visible area - full opacity (colors handle transparency via rgba)
-                        1.0
-                    };
+                    // Determine if this line is the "current" line
+                    let is_current = distance.abs() < 0.5 && current_visible_idx == Some(idx);
 
                     let line_class = if is_current {
                         "karaoke-line current"
@@ -194,11 +143,13 @@ pub fn KaraokeLine() -> Element {
                         "karaoke-line upcoming"
                     };
 
-                    // Inline style with animated transform and opacity
+                    // Pass raw values to CSS - all transform/opacity calculations done in CSS
                     let line_style = format!(
-                        "transform: translateY({y_offset}px) scale({scale}); \
-                         opacity: {opacity}; \
-                         --duration: {}ms; --play-state: {play_state};",
+                        "--line-index: {line_absolute_idx}; \
+                         --scroll-offset: {animated_offset}; \
+                         --distance: {distance}; \
+                         --duration: {}ms; \
+                         --play-state: {play_state};",
                         line.duration_ms
                     );
 

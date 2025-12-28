@@ -6,15 +6,6 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
-/// Macro to define an f32 constant and its string representation together.
-/// This ensures the value and string stay in sync.
-macro_rules! define_f32_const {
-    ($name:ident, $name_str:ident = $value:literal) => {
-        const $name: f32 = $value;
-        const $name_str: &str = stringify!($value);
-    };
-}
-
 /// Main configuration structure (source-agnostic)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VersualizerConfig {
@@ -118,34 +109,18 @@ pub struct UiConfig {
 pub struct LayoutConfig {
     #[serde(default = "default_max_lines")]
     pub max_lines: usize,
-    #[serde(default = "default_current_line_scale")]
-    pub current_line_scale: f32,
-    #[serde(default = "default_upcoming_line_scale")]
-    pub upcoming_line_scale: f32,
 }
 
 const DEFAULT_MAX_LINES: usize = 3;
-define_f32_const!(DEFAULT_CURRENT_LINE_SCALE, DEFAULT_CURRENT_LINE_SCALE_STR = 1.0);
-define_f32_const!(DEFAULT_UPCOMING_LINE_SCALE, DEFAULT_UPCOMING_LINE_SCALE_STR = 0.8);
 
 const fn default_max_lines() -> usize {
     DEFAULT_MAX_LINES
-}
-
-const fn default_current_line_scale() -> f32 {
-    DEFAULT_CURRENT_LINE_SCALE
-}
-
-const fn default_upcoming_line_scale() -> f32 {
-    DEFAULT_UPCOMING_LINE_SCALE
 }
 
 impl Default for LayoutConfig {
     fn default() -> Self {
         Self {
             max_lines: DEFAULT_MAX_LINES,
-            current_line_scale: DEFAULT_CURRENT_LINE_SCALE,
-            upcoming_line_scale: DEFAULT_UPCOMING_LINE_SCALE,
         }
     }
 }
@@ -290,10 +265,6 @@ const CONFIG_TEMPLATE_UI: &str = concatcp!(
     "[ui.layout]\n",
     "# The number of song lines to display in the visualizer\n",
     "max_lines = ", DEFAULT_MAX_LINES, "\n",
-    "# Scale factor for the current (highlighted) line being sung\n",
-    "current_line_scale = ", DEFAULT_CURRENT_LINE_SCALE_STR, "\n",
-    "# Scale factor for upcoming lines to be sung\n",
-    "upcoming_line_scale = ", DEFAULT_UPCOMING_LINE_SCALE_STR, "\n",
     "\n",
     "[ui.animation]\n",
     "# Animation framerate in frames per second\n",
@@ -329,8 +300,6 @@ mod tests {
     fn test_layout_config_default() {
         let config = LayoutConfig::default();
         assert_eq!(config.max_lines, 3);
-        assert!((config.current_line_scale - 1.0).abs() < f32::EPSILON);
-        assert!((config.upcoming_line_scale - 0.8).abs() < f32::EPSILON);
     }
 
     #[test]
@@ -424,7 +393,6 @@ height_px = 300
         assert_eq!(config.lyrics.providers[0], LyricsProviderType::Lrclib);
         assert_eq!(config.lyrics.providers[1], LyricsProviderType::SpotifyLyrics);
         assert_eq!(config.ui.layout.max_lines, 2);
-        assert!((config.ui.layout.current_line_scale - 1.2).abs() < f32::EPSILON);
         assert_eq!(config.ui.animation.framerate, 30);
         assert_eq!(config.ui.animation.drift_threshold_ms, 500);
         assert_eq!(config.ui.window.width_px, 1024);

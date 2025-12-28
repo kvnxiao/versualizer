@@ -16,19 +16,24 @@
   /* Color for current line's unsung text (the text being revealed by the fill) */
   --current-unsung-color: #FFFFFF;
   /* Color for upcoming lines (use rgba for opacity) */
-  --unsung-color: rgba(255, 255, 255, 0.3);
+  --unsung-color: rgba(255, 255, 255, 0.4);
   /* Background color of the container */
-  --background-color: rgba(0, 0, 0, 0.3);
+  --background-color: rgba(0, 0, 0, 0.5);
   /* Base font size - affects all text sizing */
   --base-font-rem-size: 32px;
   /* Line height multiplier (on each line of text) */
   --base-line-height: 1.5;
   /* Font family - for lyrics in non-English languages ensure that appropriate fonts are specified here with fallbacks */
-  --font-family: "Microsoft YaHei", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
-  /* Font size for the current line */
-  --current-line-font-size: 1.0rem;
-  /* Font size for upcoming lines */
-  --upcoming-line-font-size: 0.8rem;
+  --font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+  /* Gap between lines */
+  --line-gap: 0.25rem;
+  /* Calculated line slot height: font-size * line-height + gap */
+  --line-slot-height: calc(var(--base-font-rem-size) * var(--base-line-height) + var(--line-gap));
+  /* Scale for current line */
+  --current-line-scale: 1.0;
+  /* Scale for upcoming lines */
+  --upcoming-line-scale: 0.8;
+  /* --max-lines: 3; Set dynamically from config via inline style. Uncomment to override */
 }
 
 * {
@@ -56,18 +61,22 @@ html, body {
   align-items: center;
   justify-content: center;
   background-color: var(--background-color);
+  border-radius: 1rem;
 }
 
 /* Container for karaoke lines - clips overflow for buffer lines */
 .lines {
+  display: flex;
+  flex-direction: column;
   position: relative;
   width: 100%;
   overflow: hidden;
   pointer-events: none;
-  /* Height is already set dynamically via inline style based on max_lines */
+  height: calc(var(--line-slot-height) * var(--max-lines));
 }
 
 /* Individual line with transform-based positioning and scaling */
+/* Rust passes: --line-index, --scroll-offset, --distance (from current line) */
 .karaoke-line {
   position: absolute;
   left: 0;
@@ -75,18 +84,33 @@ html, body {
   display: flex;
   justify-content: center;
   white-space: nowrap;
-  font-size: var(--base-font-size);
+  font-size: var(--base-font-rem-size);
   line-height: var(--base-line-height);
-  /* Transform is set via inline style: translateY() scale() */
   transform-origin: center center;
-  /* No CSS transitions - dioxus-motion handles animations */
+
+  /* Compute translateY from line index and scroll offset */
+  --y-offset: calc((var(--line-index) - var(--scroll-offset)) * var(--line-slot-height));
+
+  /* Compute scale: interpolate between current and upcoming based on distance */
+  /* clamp abs(distance) to [0, 1], then lerp: current*(1-t) + upcoming*t */
+  --abs-distance: max(var(--distance), calc(-1 * var(--distance)));
+  --t: clamp(var(--abs-distance), 0, 1);
+  --scale: calc(var(--current-line-scale) * (1 - var(--t)) + var(--upcoming-line-scale) * var(--t));
+
+  /* Compute opacity: fade in/out for buffer zones */
+  /* Above current (distance < 0): opacity = 1 + distance, clamped to [0, 1] */
+  /* Below visible (distance >= max_lines): opacity = 1 - (distance - max_lines + 1), clamped */
+  /* Visible area: full opacity */
+  --opacity: clamp(0, calc(1 + var(--distance)), 1);
+
+  transform: translateY(var(--y-offset)) scale(var(--scale));
+  opacity: var(--opacity);
 }
 
 /* Wrapper for current line text (enables animation restart via key) */
 .current-line-wrapper {
   position: relative;
   display: inline-block;
-  font-size: var(--current-line-font-size);
 }
 
 /* Karaoke text animation */
@@ -115,5 +139,4 @@ html, body {
 /* Upcoming line text (no animation) */
 .upcoming-line {
   color: var(--unsung-color);
-  font-size: var(--upcoming-line-font-size);
 }
