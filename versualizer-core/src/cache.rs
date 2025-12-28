@@ -458,3 +458,205 @@ fn format_timestamp(duration: std::time::Duration) -> String {
 
     format!("{minutes:02}:{seconds:02}.{hundredths:02}")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::lrc::{LrcLine, LrcMetadata, LrcWord};
+
+    #[test]
+    fn test_lyrics_type_as_str() {
+        assert_eq!(LyricsType::Synced.as_str(), "synced");
+        assert_eq!(LyricsType::Unsynced.as_str(), "unsynced");
+    }
+
+    #[test]
+    fn test_lyrics_type_from_str() {
+        assert_eq!(LyricsType::from_str("synced"), Some(LyricsType::Synced));
+        assert_eq!(LyricsType::from_str("unsynced"), Some(LyricsType::Unsynced));
+        assert_eq!(LyricsType::from_str("unknown"), None);
+        assert_eq!(LyricsType::from_str(""), None);
+    }
+
+    #[test]
+    fn test_format_timestamp_basic() {
+        use std::time::Duration;
+
+        // 12 seconds, 340 milliseconds
+        let duration = Duration::from_millis(12340);
+        assert_eq!(format_timestamp(duration), "00:12.34");
+    }
+
+    #[test]
+    fn test_format_timestamp_with_minutes() {
+        use std::time::Duration;
+
+        // 1 minute, 30 seconds
+        let duration = Duration::from_secs(90);
+        assert_eq!(format_timestamp(duration), "01:30.00");
+    }
+
+    #[test]
+    fn test_format_timestamp_zero() {
+        use std::time::Duration;
+
+        let duration = Duration::ZERO;
+        assert_eq!(format_timestamp(duration), "00:00.00");
+    }
+
+    #[test]
+    fn test_format_timestamp_long_duration() {
+        use std::time::Duration;
+
+        // 5 minutes, 45 seconds, 670 ms
+        let duration = Duration::from_millis(5 * 60 * 1000 + 45 * 1000 + 670);
+        assert_eq!(format_timestamp(duration), "05:45.67");
+    }
+
+    #[test]
+    fn test_serialize_lrc_simple() {
+        use std::time::Duration;
+
+        let lrc = LrcFile {
+            metadata: LrcMetadata::default(),
+            lines: vec![
+                LrcLine {
+                    start_time: Duration::from_millis(5000),
+                    text: "Hello world".to_string(),
+                    words: None,
+                },
+                LrcLine {
+                    start_time: Duration::from_millis(10000),
+                    text: "Second line".to_string(),
+                    words: None,
+                },
+            ],
+        };
+
+        let serialized = serialize_lrc(&lrc);
+        assert!(serialized.contains("[00:05.00]Hello world"));
+        assert!(serialized.contains("[00:10.00]Second line"));
+    }
+
+    #[test]
+    fn test_serialize_lrc_with_metadata() {
+        use std::time::Duration;
+
+        let lrc = LrcFile {
+            metadata: LrcMetadata {
+                title: Some("Test Song".to_string()),
+                artist: Some("Test Artist".to_string()),
+                album: Some("Test Album".to_string()),
+                offset: 0,
+                ..Default::default()
+            },
+            lines: vec![LrcLine {
+                start_time: Duration::from_millis(5000),
+                text: "Lyrics here".to_string(),
+                words: None,
+            }],
+        };
+
+        let serialized = serialize_lrc(&lrc);
+        assert!(serialized.contains("[ti:Test Song]"));
+        assert!(serialized.contains("[ar:Test Artist]"));
+        assert!(serialized.contains("[al:Test Album]"));
+    }
+
+    #[test]
+    fn test_serialize_lrc_with_offset() {
+        use std::time::Duration;
+
+        let lrc = LrcFile {
+            metadata: LrcMetadata {
+                offset: 500,
+                ..Default::default()
+            },
+            lines: vec![LrcLine {
+                start_time: Duration::from_millis(5000),
+                text: "Test".to_string(),
+                words: None,
+            }],
+        };
+
+        let serialized = serialize_lrc(&lrc);
+        assert!(serialized.contains("[offset:500]"));
+    }
+
+    #[test]
+    fn test_serialize_lrc_enhanced_format() {
+        use std::time::Duration;
+
+        let lrc = LrcFile {
+            metadata: LrcMetadata::default(),
+            lines: vec![LrcLine {
+                start_time: Duration::from_millis(5000),
+                text: "Hello world".to_string(),
+                words: Some(vec![
+                    LrcWord {
+                        start_time: Duration::from_millis(5000),
+                        end_time: Some(Duration::from_millis(5500)),
+                        text: "Hello".to_string(),
+                    },
+                    LrcWord {
+                        start_time: Duration::from_millis(5500),
+                        end_time: Some(Duration::from_millis(6000)),
+                        text: "world".to_string(),
+                    },
+                ]),
+            }],
+        };
+
+        let serialized = serialize_lrc(&lrc);
+        assert!(serialized.contains("[00:05.00]"));
+        assert!(serialized.contains("<00:05.00>"));
+        assert!(serialized.contains("Hello"));
+        assert!(serialized.contains("<00:05.50>"));
+        assert!(serialized.contains("world"));
+    }
+
+    #[test]
+    fn test_cached_lyrics_to_lyrics_result_synced() {
+        use chrono::Utc;
+
+        let cached = CachedLyrics {
+            id: 1,
+            artist: "Artist".to_string(),
+            track: "Track".to_string(),
+            album: Some("Album".to_string()),
+            duration_ms: Some(180000),
+            provider: "lrclib".to_string(),
+            provider_id: "123".to_string(),
+            lyrics_type: LyricsType::Synced,
+            content: "[00:05.00]Test lyrics".to_string(),
+            fetched_at: Utc::now(),
+        };
+
+        let result = cached.to_lyrics_result();
+        assert!(result.is_synced());
+        assert!(result.is_found());
+    }
+
+    #[test]
+    fn test_cached_lyrics_to_lyrics_result_unsynced() {
+        use chrono::Utc;
+
+        let cached = CachedLyrics {
+            id: 1,
+            artist: "Artist".to_string(),
+            track: "Track".to_string(),
+            album: None,
+            duration_ms: None,
+            provider: "lrclib".to_string(),
+            provider_id: "123".to_string(),
+            lyrics_type: LyricsType::Unsynced,
+            content: "Plain text lyrics".to_string(),
+            fetched_at: Utc::now(),
+        };
+
+        let result = cached.to_lyrics_result();
+        assert!(!result.is_synced());
+        assert!(result.is_found());
+        assert_eq!(result.text(), Some("Plain text lyrics".to_string()));
+    }
+}

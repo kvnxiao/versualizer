@@ -305,3 +305,151 @@ drift_threshold_ms = 300
 width_px = 800
 height_px = 200
 "#;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_music_config_default() {
+        let config = MusicConfig::default();
+        assert_eq!(config.source, MusicSource::Spotify);
+    }
+
+    #[test]
+    fn test_lyrics_config_default() {
+        let config = LyricsConfig::default();
+        assert_eq!(config.providers, vec![LyricsProviderType::Lrclib]);
+    }
+
+    #[test]
+    fn test_layout_config_default() {
+        let config = LayoutConfig::default();
+        assert_eq!(config.max_lines, 3);
+        assert!((config.current_line_scale - 1.0).abs() < f32::EPSILON);
+        assert!((config.upcoming_line_scale - 0.8).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_animation_config_default() {
+        let config = AnimationConfig::default();
+        assert_eq!(config.framerate, 60);
+        assert_eq!(config.transition_ms, 200);
+        assert_eq!(config.easing, "ease-in-out");
+        assert_eq!(config.drift_threshold_ms, 300);
+    }
+
+    #[test]
+    fn test_window_config_default() {
+        let config = WindowConfig::default();
+        assert_eq!(config.width_px, 800);
+        assert_eq!(config.height_px, 200);
+    }
+
+    #[test]
+    fn test_ui_config_default() {
+        let config = UiConfig::default();
+        assert_eq!(config.layout.max_lines, 3);
+        assert_eq!(config.animation.framerate, 60);
+        assert_eq!(config.window.width_px, 800);
+    }
+
+    #[test]
+    fn test_providers_config_contains() {
+        let mut providers = ProvidersConfig::default();
+        providers.inner.insert(
+            "spotify".to_string(),
+            toml::Value::Table(toml::map::Map::new()),
+        );
+
+        assert!(providers.contains("spotify"));
+        assert!(!providers.contains("unknown"));
+    }
+
+    #[test]
+    fn test_providers_config_get_none() {
+        let providers = ProvidersConfig::default();
+        let result: Result<Option<String>> = providers.get("unknown");
+
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_none());
+    }
+
+    #[test]
+    fn test_lyrics_provider_type_in_config() {
+        // Test serialization/deserialization within a config context
+        let config_str = r#"
+[music]
+source = "spotify"
+
+[lyrics]
+providers = ["lrclib", "spotify_lyrics"]
+
+[ui]
+"#;
+
+        let config: VersualizerConfig = toml::from_str(config_str).unwrap();
+        assert_eq!(config.lyrics.providers[0], LyricsProviderType::Lrclib);
+        assert_eq!(config.lyrics.providers[1], LyricsProviderType::SpotifyLyrics);
+    }
+
+    #[test]
+    fn test_config_deserialization() {
+        let toml_str = r#"
+[music]
+source = "spotify"
+
+[lyrics]
+providers = ["lrclib", "spotify_lyrics"]
+
+[ui.layout]
+max_lines = 2
+current_line_scale = 1.2
+upcoming_line_scale = 0.7
+
+[ui.animation]
+framerate = 30
+transition_ms = 150
+easing = "linear"
+drift_threshold_ms = 500
+
+[ui.window]
+width_px = 1024
+height_px = 300
+"#;
+
+        let config: VersualizerConfig = toml::from_str(toml_str).unwrap();
+
+        assert_eq!(config.music.source, MusicSource::Spotify);
+        assert_eq!(config.lyrics.providers.len(), 2);
+        assert_eq!(config.lyrics.providers[0], LyricsProviderType::Lrclib);
+        assert_eq!(config.lyrics.providers[1], LyricsProviderType::SpotifyLyrics);
+        assert_eq!(config.ui.layout.max_lines, 2);
+        assert!((config.ui.layout.current_line_scale - 1.2).abs() < f32::EPSILON);
+        assert_eq!(config.ui.animation.framerate, 30);
+        assert_eq!(config.ui.animation.easing, "linear");
+        assert_eq!(config.ui.window.width_px, 1024);
+    }
+
+    #[test]
+    fn test_config_with_defaults() {
+        // Minimal config - should use defaults for missing fields
+        // Note: ui section is required but its subsections have defaults
+        let toml_str = r#"
+[music]
+source = "spotify"
+
+[lyrics]
+providers = ["lrclib"]
+
+[ui]
+"#;
+
+        let config: VersualizerConfig = toml::from_str(toml_str).unwrap();
+
+        // Check that defaults are applied
+        assert_eq!(config.ui.layout.max_lines, 3);
+        assert_eq!(config.ui.animation.framerate, 60);
+        assert_eq!(config.ui.window.width_px, 800);
+    }
+}

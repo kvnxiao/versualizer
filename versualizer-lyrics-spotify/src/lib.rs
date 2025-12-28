@@ -20,6 +20,7 @@ use versualizer_core::{
     CoreError, FetchedLyrics, LrcFile, LrcLine, LrcMetadata, LyricsProvider, LyricsQuery,
     LyricsResult,
 };
+use versualizer_spotify_api::config::DEFAULT_SECRET_KEY_URL;
 
 use token_manager::SpotifyTokenManager;
 
@@ -29,9 +30,6 @@ const SPOTIFY_LYRICS_API: &str = "https://spclient.wg.spotify.com/color-lyrics/v
 const DEFAULT_TIMEOUT_SECS: u64 = 10;
 /// Default number of retry attempts
 const DEFAULT_MAX_RETRIES: u32 = 3;
-/// Default URL for fetching secret keys
-const DEFAULT_SECRET_KEY_URL: &str =
-    "https://github.com/xyloflake/spot-secrets-go/blob/main/secrets/secretDict.json?raw=true";
 /// User agent for requests
 const USER_AGENT: &str =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";

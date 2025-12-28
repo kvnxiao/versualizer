@@ -161,3 +161,203 @@ impl TrackInfo {
         self.duration.as_secs_u32()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_playback_state_default() {
+        let state = PlaybackState::default();
+        assert!(!state.is_playing);
+        assert!(state.track.is_none());
+        assert_eq!(state.position, Duration::ZERO);
+        assert_eq!(state.duration, Duration::ZERO);
+    }
+
+    #[test]
+    fn test_playback_state_new() {
+        let track = TrackInfo::new(
+            MusicSource::Spotify,
+            "track123",
+            "Test Song",
+            "Test Artist",
+            "Test Album",
+            Duration::from_secs(180),
+        );
+
+        let state = PlaybackState::new(
+            true,
+            Some(track),
+            Duration::from_secs(30),
+            Duration::from_secs(180),
+        );
+
+        assert!(state.is_playing);
+        assert!(state.track.is_some());
+        assert_eq!(state.position, Duration::from_secs(30));
+        assert_eq!(state.duration, Duration::from_secs(180));
+    }
+
+    #[test]
+    fn test_interpolated_position_paused() {
+        let state = PlaybackState {
+            is_playing: false,
+            track: None,
+            position: Duration::from_secs(30),
+            duration: Duration::from_secs(180),
+            updated_at: Instant::now() - Duration::from_secs(5),
+        };
+
+        // When paused, position should not advance
+        assert_eq!(state.interpolated_position(), Duration::from_secs(30));
+    }
+
+    #[test]
+    fn test_interpolated_position_clamped() {
+        let state = PlaybackState {
+            is_playing: true,
+            track: None,
+            position: Duration::from_secs(178),
+            duration: Duration::from_secs(180),
+            updated_at: Instant::now() - Duration::from_secs(10), // 10 seconds ago
+        };
+
+        // Position should be clamped to duration
+        assert_eq!(state.interpolated_position(), Duration::from_secs(180));
+    }
+
+    #[test]
+    fn test_track_changed_same_track() {
+        let track = TrackInfo::new(
+            MusicSource::Spotify,
+            "track123",
+            "Song",
+            "Artist",
+            "Album",
+            Duration::from_secs(180),
+        );
+
+        let state1 = PlaybackState::new(true, Some(track.clone()), Duration::ZERO, Duration::from_secs(180));
+        let state2 = PlaybackState::new(true, Some(track), Duration::from_secs(30), Duration::from_secs(180));
+
+        assert!(!state1.track_changed(&state2));
+    }
+
+    #[test]
+    fn test_track_changed_different_track() {
+        let track1 = TrackInfo::new(
+            MusicSource::Spotify,
+            "track123",
+            "Song 1",
+            "Artist",
+            "Album",
+            Duration::from_secs(180),
+        );
+
+        let track2 = TrackInfo::new(
+            MusicSource::Spotify,
+            "track456",
+            "Song 2",
+            "Artist",
+            "Album",
+            Duration::from_secs(200),
+        );
+
+        let state1 = PlaybackState::new(true, Some(track1), Duration::ZERO, Duration::from_secs(180));
+        let state2 = PlaybackState::new(true, Some(track2), Duration::ZERO, Duration::from_secs(200));
+
+        assert!(state1.track_changed(&state2));
+    }
+
+    #[test]
+    fn test_track_changed_none_to_some() {
+        let track = TrackInfo::new(
+            MusicSource::Spotify,
+            "track123",
+            "Song",
+            "Artist",
+            "Album",
+            Duration::from_secs(180),
+        );
+
+        let state1 = PlaybackState::default();
+        let state2 = PlaybackState::new(true, Some(track), Duration::ZERO, Duration::from_secs(180));
+
+        assert!(state1.track_changed(&state2));
+    }
+
+    #[test]
+    fn test_track_changed_both_none() {
+        let state1 = PlaybackState::default();
+        let state2 = PlaybackState::default();
+
+        assert!(!state1.track_changed(&state2));
+    }
+
+    #[test]
+    fn test_playback_state_changed() {
+        let state1 = PlaybackState {
+            is_playing: true,
+            ..Default::default()
+        };
+        let state2 = PlaybackState {
+            is_playing: false,
+            ..Default::default()
+        };
+
+        assert!(state1.playback_state_changed(&state2));
+        assert!(!state1.playback_state_changed(&state1));
+    }
+
+    #[test]
+    fn test_track_info_new() {
+        let track = TrackInfo::new(
+            MusicSource::Spotify,
+            "track123",
+            "Test Song",
+            "Test Artist",
+            "Test Album",
+            Duration::from_secs(180),
+        );
+
+        assert_eq!(track.source, MusicSource::Spotify);
+        assert_eq!(track.source_track_id, "track123");
+        assert_eq!(track.name, "Test Song");
+        assert_eq!(track.artist, "Test Artist");
+        assert_eq!(track.album, "Test Album");
+        assert_eq!(track.duration, Duration::from_secs(180));
+        assert!(track.provider_ids.is_empty());
+    }
+
+    #[test]
+    fn test_track_info_with_provider_id() {
+        let track = TrackInfo::new(
+            MusicSource::Spotify,
+            "track123",
+            "Song",
+            "Artist",
+            "Album",
+            Duration::from_secs(180),
+        )
+        .with_provider_id("spotify", "spotify_track_id")
+        .with_provider_id("lrclib", "lrclib_id");
+
+        assert_eq!(track.provider_ids.get("spotify"), Some(&"spotify_track_id".to_string()));
+        assert_eq!(track.provider_ids.get("lrclib"), Some(&"lrclib_id".to_string()));
+    }
+
+    #[test]
+    fn test_track_info_duration_secs() {
+        let track = TrackInfo::new(
+            MusicSource::Spotify,
+            "track123",
+            "Song",
+            "Artist",
+            "Album",
+            Duration::from_secs(183), // 3 minutes 3 seconds
+        );
+
+        assert_eq!(track.duration_secs(), 183);
+    }
+}

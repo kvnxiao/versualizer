@@ -609,4 +609,194 @@ mod tests {
         assert_eq!(visible[1].text, "Line 2");
         assert_eq!(visible[2].text, "Line 3");
     }
+
+    #[test]
+    fn test_word_progress_empty_text() {
+        let line = LrcLine {
+            start_time: Duration::from_secs(10),
+            text: String::new(),
+            words: None,
+        };
+
+        // Empty text should return 1.0
+        assert_eq!(line.word_progress(Duration::from_secs(10), 0), 1.0);
+    }
+
+    #[test]
+    fn test_word_progress_without_word_timing() {
+        let line = LrcLine {
+            start_time: Duration::from_secs(10),
+            text: "Hello world".to_string(), // 11 chars
+            words: None,
+        };
+
+        // Without word timing, word_progress falls back to line.progress()
+        // At line start (position == start_time), line progress is 0.0
+        // For char_index 0: threshold = 0/11 = 0.0
+        // Since 0.0 >= 0.0, first char is "revealed" immediately
+        assert_eq!(line.word_progress(Duration::from_secs(10), 0), 1.0);
+
+        // For a middle char (index 5), threshold = 5/11 ≈ 0.45
+        // At line start, progress is 0.0 < 0.45, so not revealed
+        assert_eq!(line.word_progress(Duration::from_secs(10), 5), 0.0);
+
+        // At end of line (using default 5s duration), progress would be 1.0
+        // All chars should be revealed
+        assert_eq!(line.word_progress(Duration::from_secs(15), 5), 1.0);
+    }
+
+    #[test]
+    fn test_word_progress_with_word_timing_before_word() {
+        let line = LrcLine {
+            start_time: Duration::from_secs(10),
+            text: "Hello world".to_string(),
+            words: Some(vec![
+                LrcWord {
+                    start_time: Duration::from_millis(10000),
+                    end_time: Some(Duration::from_millis(10500)),
+                    text: "Hello".to_string(),
+                },
+                LrcWord {
+                    start_time: Duration::from_millis(10500),
+                    end_time: Some(Duration::from_millis(11000)),
+                    text: "world".to_string(),
+                },
+            ]),
+        };
+
+        // Before word starts - should be 0.0
+        assert_eq!(line.word_progress(Duration::from_millis(9000), 0), 0.0);
+    }
+
+    #[test]
+    fn test_word_progress_with_word_timing_after_word() {
+        let line = LrcLine {
+            start_time: Duration::from_secs(10),
+            text: "Hello world".to_string(),
+            words: Some(vec![
+                LrcWord {
+                    start_time: Duration::from_millis(10000),
+                    end_time: Some(Duration::from_millis(10500)),
+                    text: "Hello".to_string(),
+                },
+                LrcWord {
+                    start_time: Duration::from_millis(10500),
+                    end_time: Some(Duration::from_millis(11000)),
+                    text: "world".to_string(),
+                },
+            ]),
+        };
+
+        // After first word ends - char 0 (in "Hello") should be 1.0
+        assert_eq!(line.word_progress(Duration::from_millis(10600), 0), 1.0);
+    }
+
+    #[test]
+    fn test_current_line_index() {
+        let input = r#"
+[00:05.00]First
+[00:10.00]Second
+[00:15.00]Third
+"#;
+        let lrc = LrcFile::parse(input).unwrap();
+
+        assert!(lrc.current_line_index(Duration::from_secs(0)).is_none());
+        assert_eq!(lrc.current_line_index(Duration::from_secs(7)), Some(0));
+        assert_eq!(lrc.current_line_index(Duration::from_secs(12)), Some(1));
+        assert_eq!(lrc.current_line_index(Duration::from_secs(20)), Some(2));
+    }
+
+    #[test]
+    fn test_visible_lines_at_start() {
+        let input = r#"
+[00:05.00]Line 1
+[00:10.00]Line 2
+[00:15.00]Line 3
+"#;
+        let lrc = LrcFile::parse(input).unwrap();
+
+        // Before any lines start
+        let visible = lrc.visible_lines(Duration::from_secs(0), 1, 2);
+        assert_eq!(visible.len(), 3); // Shows from index 0
+        assert_eq!(visible[0].text, "Line 1");
+    }
+
+    #[test]
+    fn test_visible_lines_at_end() {
+        let input = r#"
+[00:05.00]Line 1
+[00:10.00]Line 2
+[00:15.00]Line 3
+"#;
+        let lrc = LrcFile::parse(input).unwrap();
+
+        // At the last line
+        let visible = lrc.visible_lines(Duration::from_secs(20), 2, 2);
+        assert_eq!(visible.len(), 3); // Only 3 lines total, can't show more
+        assert_eq!(visible[2].text, "Line 3");
+    }
+
+    #[test]
+    fn test_line_progress_with_enhanced_words() {
+        let line = LrcLine {
+            start_time: Duration::from_millis(10000),
+            text: "Hello world".to_string(),
+            words: Some(vec![
+                LrcWord {
+                    start_time: Duration::from_millis(10000),
+                    end_time: Some(Duration::from_millis(10500)),
+                    text: "Hello".to_string(),
+                },
+                LrcWord {
+                    start_time: Duration::from_millis(10500),
+                    end_time: Some(Duration::from_millis(11000)),
+                    text: "world".to_string(),
+                },
+            ]),
+        };
+
+        // At start
+        assert_eq!(line.progress(Duration::from_millis(10000), None), 0.0);
+
+        // At end
+        assert_eq!(line.progress(Duration::from_millis(11000), None), 1.0);
+
+        // Halfway through
+        let progress = line.progress(Duration::from_millis(10500), None);
+        assert!((progress - 0.5).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_parse_lrc_with_author_tag() {
+        let input = r#"
+[au:Lyrics Author]
+[00:05.00]Test lyrics
+"#;
+        let result = LrcFile::parse(input).unwrap();
+        assert_eq!(result.metadata.author, Some("Lyrics Author".to_string()));
+    }
+
+    #[test]
+    fn test_parse_lrc_with_length_tag() {
+        let input = r#"
+[length:03:30]
+[00:05.00]Test lyrics
+"#;
+        let result = LrcFile::parse(input).unwrap();
+        assert_eq!(result.metadata.length, Some(Duration::from_secs(210)));
+    }
+
+    #[test]
+    fn test_parse_lrc_lines_sorted() {
+        // Lines out of order should be sorted by start time
+        let input = r#"
+[00:15.00]Third
+[00:05.00]First
+[00:10.00]Second
+"#;
+        let result = LrcFile::parse(input).unwrap();
+        assert_eq!(result.lines[0].text, "First");
+        assert_eq!(result.lines[1].text, "Second");
+        assert_eq!(result.lines[2].text, "Third");
+    }
 }

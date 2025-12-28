@@ -215,11 +215,13 @@ impl SpotifyTokenManager {
         }
 
         // Get current system time for relative expiration tracking
-        #[allow(clippy::cast_possible_truncation)] // ms since epoch won't exceed u64 for centuries
-        let fetched_at_system_ms = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as u64;
+        let fetched_at_system_ms = u64::try_from(
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis(),
+        )
+        .unwrap_or(u64::MAX);
 
         Ok(CachedAccessToken {
             access_token: token_response.access_token,

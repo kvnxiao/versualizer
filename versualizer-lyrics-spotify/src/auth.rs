@@ -51,9 +51,8 @@ impl CachedAccessToken {
     ///
     /// Uses relative timing from when the token was fetched to avoid system clock issues.
     #[must_use]
-    #[allow(clippy::cast_possible_truncation)] // elapsed ms will not exceed u64 in practice
     pub fn is_expired(&self, buffer_secs: u64) -> bool {
-        let elapsed_ms = self.fetched_at.elapsed().as_millis() as u64;
+        let elapsed_ms = u64::try_from(self.fetched_at.elapsed().as_millis()).unwrap_or(u64::MAX);
         let current_time_ms = self.fetched_at_system_ms.saturating_add(elapsed_ms);
         let buffer_ms = buffer_secs.saturating_mul(1000);
 

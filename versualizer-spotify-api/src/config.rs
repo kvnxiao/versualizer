@@ -1,10 +1,15 @@
 //! Spotify provider configuration.
 
+use const_format::concatcp;
 use serde::{Deserialize, Serialize};
 use versualizer_core::{CoreError, ProvidersConfig};
 
 /// Provider name used in config file
 pub const PROVIDER_NAME: &str = "spotify";
+
+/// Default URL for fetching Spotify TOTP secret keys
+pub const DEFAULT_SECRET_KEY_URL: &str =
+    "https://github.com/xyloflake/spot-secrets-go/blob/main/secrets/secretDict.json?raw=true";
 
 /// Spotify-specific configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -66,7 +71,8 @@ impl SpotifyProviderConfig {
 
 /// Config template for Spotify provider.
 /// This is appended to the base config template when creating a new config file.
-pub const CONFIG_TEMPLATE: &str = r#"[providers.spotify]
+pub const CONFIG_TEMPLATE: &str = concatcp!(
+    r#"[providers.spotify]
 # Required when music.source = "spotify"
 # Get these from https://developer.spotify.com/dashboard
 client_id = ""
@@ -76,6 +82,7 @@ poll_interval_ms = 1000
 # Optional: For unofficial Spotify lyrics API (use at your own risk - may violate TOS)
 # sp_dc = ""
 # Optional: URL for fetching TOTP secret keys
-# secret_key_url = "https://github.com/xyloflake/spot-secrets-go/blob/main/secrets/secretDict.json?raw=true"
-
-"#;
+# secret_key_url = ""#,
+    DEFAULT_SECRET_KEY_URL,
+    "\"\n\n"
+);

@@ -88,9 +88,7 @@ impl PrecomputedLyrics {
             .find(|(_, line)| line.start_time_ms <= position_ms)
             .map_or(INTRO_LINE_INDEX, |(i, _)| {
                 // Safe: line count is always much less than i32::MAX
-                #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
-                let idx = i as i32;
-                idx
+                i32::try_from(i).unwrap_or(i32::MAX)
             })
     }
 
@@ -180,8 +178,8 @@ impl KaraokeState {
             result
         } else {
             // On an actual line
-            #[allow(clippy::cast_sign_loss)]
-            let idx = current_idx as usize;
+            // current_idx >= 0 is guaranteed by the outer if condition
+            let idx = usize::try_from(current_idx).unwrap_or(0);
             let start = idx.saturating_sub(before);
             let end = (idx + after + 1).min(lyrics.lines.len());
             lyrics.lines[start..end].to_vec()
@@ -259,9 +257,7 @@ impl LocalPlaybackTimer {
     pub fn interpolated_position_ms(&self) -> u64 {
         if self.is_playing {
             let elapsed_ms = self.reference_instant.elapsed().as_millis();
-            // Safe: song durations never exceed u64::MAX milliseconds
-            #[allow(clippy::cast_possible_truncation)]
-            let elapsed = elapsed_ms as u64;
+            let elapsed = u64::try_from(elapsed_ms).unwrap_or(u64::MAX);
             self.reference_position_ms.saturating_add(elapsed)
         } else {
             self.reference_position_ms

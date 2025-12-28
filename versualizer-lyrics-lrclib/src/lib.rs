@@ -20,13 +20,12 @@ fn duration_score(actual: Option<f64>, expected: Option<u32>, scale: f64) -> i32
     match (actual, expected) {
         (Some(d), Some(q)) => {
             let diff = (d - f64::from(q)).abs() * scale;
-            // Clamp to i32::MAX and safely convert
+            // Safely convert f64 to i32 with saturation.
+            // diff is always non-negative (abs), so we clamp to [0, i32::MAX].
+            // Note: Rust stable doesn't have f64::to_int_saturating(), so we use clamp + cast.
+            // The FloatToInt trait exists but is unstable (nightly-only).
             #[allow(clippy::cast_possible_truncation)]
-            if diff > f64::from(i32::MAX) {
-                i32::MAX
-            } else {
-                diff as i32
-            }
+            { diff.clamp(0.0, f64::from(i32::MAX)) as i32 }
         }
         _ => 50, // Default score when duration is unknown
     }

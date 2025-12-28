@@ -121,3 +121,83 @@ pub trait MusicSourceProviderBuilder: Send + Sync {
         cancel_token: CancellationToken,
     ) -> Result<Self::Provider>;
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_music_source_as_str() {
+        assert_eq!(MusicSource::Spotify.as_str(), "spotify");
+        assert_eq!(MusicSource::Mpris.as_str(), "mpris");
+        assert_eq!(MusicSource::WindowsMedia.as_str(), "windows_media");
+        assert_eq!(MusicSource::YouTubeMusic.as_str(), "youtube_music");
+    }
+
+    #[test]
+    fn test_music_source_display() {
+        assert_eq!(format!("{}", MusicSource::Spotify), "spotify");
+        assert_eq!(format!("{}", MusicSource::Mpris), "mpris");
+        assert_eq!(format!("{}", MusicSource::WindowsMedia), "windows_media");
+        assert_eq!(format!("{}", MusicSource::YouTubeMusic), "youtube_music");
+    }
+
+    #[test]
+    fn test_music_source_serialization() {
+        // Test serde serialization with snake_case
+        // Note: YouTubeMusic becomes "you_tube_music" due to snake_case conversion
+        let spotify = MusicSource::Spotify;
+        let serialized = serde_json::to_string(&spotify).unwrap();
+        assert_eq!(serialized, "\"spotify\"");
+
+        let windows = MusicSource::WindowsMedia;
+        let serialized = serde_json::to_string(&windows).unwrap();
+        assert_eq!(serialized, "\"windows_media\"");
+
+        let youtube = MusicSource::YouTubeMusic;
+        let serialized = serde_json::to_string(&youtube).unwrap();
+        assert_eq!(serialized, "\"you_tube_music\"");
+    }
+
+    #[test]
+    fn test_music_source_deserialization() {
+        let spotify: MusicSource = serde_json::from_str("\"spotify\"").unwrap();
+        assert_eq!(spotify, MusicSource::Spotify);
+
+        let mpris: MusicSource = serde_json::from_str("\"mpris\"").unwrap();
+        assert_eq!(mpris, MusicSource::Mpris);
+
+        let windows: MusicSource = serde_json::from_str("\"windows_media\"").unwrap();
+        assert_eq!(windows, MusicSource::WindowsMedia);
+
+        let youtube: MusicSource = serde_json::from_str("\"you_tube_music\"").unwrap();
+        assert_eq!(youtube, MusicSource::YouTubeMusic);
+    }
+
+    #[test]
+    fn test_music_source_equality() {
+        assert_eq!(MusicSource::Spotify, MusicSource::Spotify);
+        assert_ne!(MusicSource::Spotify, MusicSource::Mpris);
+    }
+
+    #[test]
+    fn test_music_source_clone() {
+        let source = MusicSource::Spotify;
+        let cloned = source;
+        assert_eq!(source, cloned);
+    }
+
+    #[test]
+    fn test_music_source_hash() {
+        use std::collections::HashSet;
+
+        let mut set = HashSet::new();
+        set.insert(MusicSource::Spotify);
+        set.insert(MusicSource::Mpris);
+        set.insert(MusicSource::Spotify); // Duplicate
+
+        assert_eq!(set.len(), 2);
+        assert!(set.contains(&MusicSource::Spotify));
+        assert!(set.contains(&MusicSource::Mpris));
+    }
+}

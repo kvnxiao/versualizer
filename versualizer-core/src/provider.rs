@@ -132,3 +132,134 @@ pub trait LyricsProvider: Send + Sync {
     /// Fetch lyrics for a query
     async fn fetch(&self, query: &LyricsQuery) -> Result<FetchedLyrics, CoreError>;
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_lyrics_query_new() {
+        let query = LyricsQuery::new("Test Song", "Test Artist");
+
+        assert_eq!(query.track_name, "Test Song");
+        assert_eq!(query.artist_name, "Test Artist");
+        assert!(query.album_name.is_none());
+        assert!(query.duration_secs.is_none());
+        assert!(query.provider_ids.is_empty());
+    }
+
+    #[test]
+    fn test_lyrics_query_with_album() {
+        let query = LyricsQuery::new("Song", "Artist").with_album("Album");
+
+        assert_eq!(query.album_name, Some("Album".to_string()));
+    }
+
+    #[test]
+    fn test_lyrics_query_with_duration() {
+        let query = LyricsQuery::new("Song", "Artist").with_duration(180);
+
+        assert_eq!(query.duration_secs, Some(180));
+    }
+
+    #[test]
+    fn test_lyrics_query_with_provider_id() {
+        let query = LyricsQuery::new("Song", "Artist")
+            .with_provider_id("spotify", "spotify_track_123")
+            .with_provider_id("lrclib", "12345");
+
+        assert_eq!(query.provider_id("spotify"), Some("spotify_track_123"));
+        assert_eq!(query.provider_id("lrclib"), Some("12345"));
+        assert_eq!(query.provider_id("unknown"), None);
+    }
+
+    #[test]
+    fn test_lyrics_query_spotify_track_id() {
+        let query = LyricsQuery::new("Song", "Artist")
+            .with_provider_id("spotify", "4uLU6hMCjMI75M1A2tKUQC");
+
+        assert_eq!(
+            query.spotify_track_id(),
+            Some("4uLU6hMCjMI75M1A2tKUQC")
+        );
+    }
+
+    #[test]
+    fn test_lyrics_query_spotify_track_id_missing() {
+        let query = LyricsQuery::new("Song", "Artist");
+
+        assert!(query.spotify_track_id().is_none());
+    }
+
+    #[test]
+    fn test_lyrics_query_chained_builder() {
+        let query = LyricsQuery::new("Test Song", "Test Artist")
+            .with_album("Test Album")
+            .with_duration(200)
+            .with_provider_id("spotify", "abc123");
+
+        assert_eq!(query.track_name, "Test Song");
+        assert_eq!(query.artist_name, "Test Artist");
+        assert_eq!(query.album_name, Some("Test Album".to_string()));
+        assert_eq!(query.duration_secs, Some(200));
+        assert_eq!(query.provider_id("spotify"), Some("abc123"));
+    }
+
+    #[test]
+    fn test_lyrics_result_not_found() {
+        let result = LyricsResult::NotFound;
+
+        assert!(!result.is_found());
+        assert!(!result.is_synced());
+        assert!(result.as_synced().is_none());
+        assert!(result.text().is_none());
+    }
+
+    #[test]
+    fn test_lyrics_result_unsynced() {
+        let result = LyricsResult::Unsynced("Plain text lyrics\nLine 2".to_string());
+
+        assert!(result.is_found());
+        assert!(!result.is_synced());
+        assert!(result.as_synced().is_none());
+        assert_eq!(
+            result.text(),
+            Some("Plain text lyrics\nLine 2".to_string())
+        );
+    }
+
+    #[test]
+    fn test_lyrics_result_synced() {
+        let lrc = LrcFile::parse("[00:05.00]First line\n[00:10.00]Second line").unwrap();
+        let result = LyricsResult::Synced(lrc);
+
+        assert!(result.is_found());
+        assert!(result.is_synced());
+        assert!(result.as_synced().is_some());
+
+        let text = result.text().unwrap();
+        assert!(text.contains("First line"));
+        assert!(text.contains("Second line"));
+    }
+
+    #[test]
+    fn test_lyrics_result_synced_text_extraction() {
+        let lrc = LrcFile::parse("[00:05.00]Line 1\n[00:10.00]Line 2\n[00:15.00]Line 3").unwrap();
+        let result = LyricsResult::Synced(lrc);
+
+        let text = result.text().unwrap();
+        assert_eq!(text, "Line 1\nLine 2\nLine 3");
+    }
+
+    #[test]
+    fn test_fetched_lyrics_struct() {
+        let lrc = LrcFile::parse("[00:05.00]Test").unwrap();
+        let fetched = FetchedLyrics {
+            result: LyricsResult::Synced(lrc),
+            provider_id: "12345".to_string(),
+        };
+
+        assert!(fetched.result.is_synced());
+        assert_eq!(fetched.provider_id, "12345");
+    }
+}

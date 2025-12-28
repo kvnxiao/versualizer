@@ -51,6 +51,24 @@ mod tests {
     }
 
     #[test]
+    fn test_as_millis_u64_zero() {
+        let duration = Duration::ZERO;
+        assert_eq!(duration.as_millis_u64(), 0);
+    }
+
+    #[test]
+    fn test_as_millis_i64() {
+        let duration = Duration::from_millis(5000);
+        assert_eq!(duration.as_millis_i64(), 5000);
+    }
+
+    #[test]
+    fn test_as_millis_i64_zero() {
+        let duration = Duration::ZERO;
+        assert_eq!(duration.as_millis_i64(), 0);
+    }
+
+    #[test]
     fn test_as_secs_u32() {
         let duration = Duration::from_secs(300);
         assert_eq!(duration.as_secs_u32(), 300);
@@ -61,5 +79,11 @@ mod tests {
         // Duration larger than u32::MAX seconds
         let duration = Duration::from_secs(u64::from(u32::MAX) + 1);
         assert_eq!(duration.as_secs_u32(), u32::MAX);
+    }
+
+    #[test]
+    fn test_as_secs_u32_zero() {
+        let duration = Duration::ZERO;
+        assert_eq!(duration.as_secs_u32(), 0);
     }
 }

@@ -105,8 +105,8 @@ pub fn KaraokeLine(
         }
     } else {
         // On an actual line - calculate position in visible array
-        #[allow(clippy::cast_sign_loss)]
-        let idx = current_index as usize;
+        // current_index >= 0 is guaranteed by the outer if condition
+        let idx = usize::try_from(current_index).unwrap_or(0);
         let actual_buffer_before = idx.min(BUFFER_LINES_BEFORE);
         if visible.len() > actual_buffer_before {
             Some(actual_buffer_before)
@@ -135,8 +135,8 @@ pub fn KaraokeLine(
         INTRO_LINE_INDEX // -1
     } else {
         // Safe: BUFFER_LINES_BEFORE is a small constant (1)
-        #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
-        let buffer = BUFFER_LINES_BEFORE as i32;
+        #[allow(clippy::cast_possible_wrap)]
+        let buffer = i32::try_from(BUFFER_LINES_BEFORE).unwrap_or(i32::MAX);
         (current_index - buffer).max(0)
     };
 
@@ -150,8 +150,8 @@ pub fn KaraokeLine(
                     // Calculate the absolute line index for this visible line
                     // visible[0] corresponds to visible_start_idx in absolute terms
                     // Safe: idx is a small index into visible array (typically < 10 elements)
-                    #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
-                    let line_absolute_idx = visible_start_idx + (idx as i32);
+                    #[allow(clippy::cast_possible_wrap)]
+                    let line_absolute_idx = visible_start_idx + i32::try_from(idx).unwrap_or(i32::MAX);
 
                     // Calculate vertical offset using animated scroll value
                     // Each line's position is: (line_absolute_idx - animated_offset) * line_slot_height

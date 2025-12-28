@@ -11,6 +11,7 @@ categories.workspace = true
 
 [dependencies]
 versualizer-core = { path = "../versualizer-core" }
+versualizer-spotify-api = { path = "../versualizer-spotify-api" }
 
 async-trait = { workspace = true }
 reqwest = { workspace = true }
