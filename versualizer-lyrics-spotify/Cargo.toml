@@ -17,7 +17,13 @@ reqwest = { workspace = true }
 reqwest-middleware = { workspace = true }
 reqwest-retry = { workspace = true }
 serde = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
 tracing = { workspace = true }
+
+# TOTP authentication
+hmac = "0.12"
+sha1 = "0.10"
 
 [lints]
 workspace = true

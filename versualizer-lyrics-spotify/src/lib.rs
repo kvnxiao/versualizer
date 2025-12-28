@@ -1,13 +1,27 @@
+//! Spotify unofficial lyrics provider using TOTP-based authentication.
+//!
+//! **WARNING:** This uses an unofficial Spotify API that requires the `sp_dc` cookie
+//! from a logged-in Spotify web session. This may violate Spotify's Terms of Service.
+//! Use at your own risk.
+
+mod auth;
+mod token_manager;
+mod totp;
+
+use std::sync::Arc;
+use std::time::Duration;
+
 use async_trait::async_trait;
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
 use reqwest_retry::{policies::ExponentialBackoff, RetryTransientMiddleware};
 use serde::Deserialize;
-use std::time::Duration;
 use tracing::{info, warn};
 use versualizer_core::{
     CoreError, FetchedLyrics, LrcFile, LrcLine, LrcMetadata, LyricsProvider, LyricsQuery,
     LyricsResult,
 };
+
+use token_manager::SpotifyTokenManager;
 
 const SPOTIFY_LYRICS_API: &str = "https://spclient.wg.spotify.com/color-lyrics/v2/track";
 
@@ -15,26 +29,43 @@ const SPOTIFY_LYRICS_API: &str = "https://spclient.wg.spotify.com/color-lyrics/v
 const DEFAULT_TIMEOUT_SECS: u64 = 10;
 /// Default number of retry attempts
 const DEFAULT_MAX_RETRIES: u32 = 3;
+/// Default URL for fetching secret keys
+const DEFAULT_SECRET_KEY_URL: &str =
+    "https://github.com/xyloflake/spot-secrets-go/blob/main/secrets/secretDict.json?raw=true";
+/// User agent for requests
+const USER_AGENT: &str =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 
-/// Spotify unofficial lyrics provider
+/// Spotify unofficial lyrics provider using TOTP-based authentication.
 ///
-/// **WARNING:** This uses an unofficial Spotify API that requires the `SP_DC` cookie
+/// **WARNING:** This uses an unofficial Spotify API that requires the `sp_dc` cookie
 /// from a logged-in Spotify web session. This may violate Spotify's Terms of Service.
 /// Use at your own risk.
 pub struct SpotifyLyricsProvider {
-    sp_dc: String,
+    token_manager: Arc<SpotifyTokenManager>,
     client: ClientWithMiddleware,
+    configured: bool,
 }
 
 impl SpotifyLyricsProvider {
     /// Create a new Spotify lyrics provider with default 10-second timeout and 3 retries.
     ///
+    /// # Arguments
+    ///
+    /// * `sp_dc` - The Spotify `sp_dc` cookie value
+    /// * `secret_key_url` - Optional custom URL for fetching secret keys (uses default if `None`)
+    ///
     /// # Errors
     ///
     /// Returns an error if the HTTP client cannot be created.
-    pub fn new(sp_dc: impl Into<String>) -> Result<Self, CoreError> {
+    pub fn new(
+        sp_dc: impl Into<String>,
+        secret_key_url: Option<String>,
+    ) -> Result<Self, CoreError> {
         let sp_dc = sp_dc.into();
-        if !sp_dc.is_empty() {
+        let configured = !sp_dc.is_empty();
+
+        if configured {
             warn!(
                 "SpotifyLyricsProvider enabled. WARNING: This uses an unofficial Spotify API \
                  that may violate Spotify's Terms of Service. Use at your own risk."
@@ -47,20 +78,28 @@ impl SpotifyLyricsProvider {
             .connect_timeout(Duration::from_secs(5))
             .build()?;
 
-        // Wrap with retry middleware (exponential backoff)
+        // Create token manager with the base client
+        let secret_url = secret_key_url.unwrap_or_else(|| DEFAULT_SECRET_KEY_URL.to_string());
+        let token_manager = Arc::new(SpotifyTokenManager::new(sp_dc, secret_url, base_client.clone()));
+
+        // Wrap with retry middleware (exponential backoff) for lyrics requests
         let retry_policy =
             ExponentialBackoff::builder().build_with_max_retries(DEFAULT_MAX_RETRIES);
         let client = ClientBuilder::new(base_client)
             .with(RetryTransientMiddleware::new_with_policy(retry_policy))
             .build();
 
-        Ok(Self { sp_dc, client })
+        Ok(Self {
+            token_manager,
+            client,
+            configured,
+        })
     }
 
-    /// Check if `SP_DC` cookie is configured
+    /// Check if `sp_dc` cookie is configured
     #[must_use]
     pub const fn is_configured(&self) -> bool {
-        !self.sp_dc.is_empty()
+        self.configured
     }
 
     /// Extract track ID from Spotify URI or URL
@@ -95,7 +134,7 @@ impl SpotifyLyricsProvider {
         if !self.is_configured() {
             return Err(CoreError::LyricsProviderFailed {
                 provider: self.name().to_string(),
-                reason: "SP_DC cookie not configured".into(),
+                reason: "sp_dc cookie not configured".into(),
             });
         }
 
@@ -117,20 +156,27 @@ impl SpotifyLyricsProvider {
         )
     }
 
-    /// Send request to Spotify lyrics API
+    /// Send request to Spotify lyrics API using Bearer token authentication.
     async fn send_request(&self, track_id: &str) -> Result<reqwest::Response, CoreError> {
+        // Get valid access token (refreshes if needed)
+        let access_token = self
+            .token_manager
+            .get_access_token()
+            .await
+            .map_err(|e| CoreError::LyricsProviderFailed {
+                provider: self.name().to_string(),
+                reason: e.to_string(),
+            })?;
+
         let url = format!("{SPOTIFY_LYRICS_API}/{track_id}?format=json&market=from_token");
         info!("Spotify GET: {}", url);
 
         let response = self
             .client
             .get(&url)
-            .header("Cookie", format!("sp_dc={}", self.sp_dc))
+            .header("Authorization", format!("Bearer {access_token}"))
             .header("App-Platform", "WebPlayer")
-            .header(
-                "User-Agent",
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            )
+            .header("User-Agent", USER_AGENT)
             .send()
             .await?;
 
@@ -151,13 +197,14 @@ impl SpotifyLyricsProvider {
         None
     }
 
-    /// Check for authentication errors
-    fn check_auth_error(&self, response: &reqwest::Response) -> Result<(), CoreError> {
+    /// Check for authentication errors and handle token refresh on 401.
+    async fn check_auth_error(&self, response: &reqwest::Response) -> Result<(), CoreError> {
         if response.status() == reqwest::StatusCode::UNAUTHORIZED {
-            warn!("SP_DC cookie expired or invalid (401 Unauthorized)");
+            warn!("Received 401 Unauthorized - invalidating cached token");
+            self.token_manager.invalidate_token().await;
             return Err(CoreError::LyricsProviderFailed {
                 provider: self.name().to_string(),
-                reason: "SP_DC cookie expired or invalid".into(),
+                reason: "Authentication failed - token may have expired".into(),
             });
         }
 
@@ -273,7 +320,7 @@ impl LyricsProvider for SpotifyLyricsProvider {
         }
 
         // Check for auth errors and other failures
-        self.check_auth_error(&response)?;
+        self.check_auth_error(&response).await?;
 
         let result: SpotifyLyricsResponse = response.json().await?;
 

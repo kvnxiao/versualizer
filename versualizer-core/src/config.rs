@@ -21,6 +21,9 @@ pub struct SpotifyConfig {
     pub poll_interval_ms: u64,
     /// Optional: For unofficial Spotify lyrics API (use at your own risk)
     pub sp_dc: Option<String>,
+    /// Optional: URL for fetching Spotify TOTP secret keys (default provided)
+    #[serde(default = "default_secret_key_url")]
+    pub secret_key_url: Option<String>,
 }
 
 fn default_redirect_uri() -> String {
@@ -29,6 +32,10 @@ fn default_redirect_uri() -> String {
 
 const fn default_poll_interval() -> u64 {
     1000
+}
+
+const fn default_secret_key_url() -> Option<String> {
+    None
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -223,6 +230,8 @@ oauth_redirect_uri = "http://127.0.0.1:8888/callback"
 poll_interval_ms = 1000
 # Optional: For unofficial Spotify lyrics API (use at your own risk - may violate TOS)
 # sp_dc = ""
+# Optional: URL for fetching TOTP secret keys (default provided)
+# secret_key_url = "https://github.com/xyloflake/spot-secrets-go/blob/main/secrets/secretDict.json?raw=true"
 
 [lyrics]
 # Provider priority: "spotify_lyrics", "lrclib"

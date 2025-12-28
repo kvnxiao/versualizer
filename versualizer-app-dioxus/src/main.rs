@@ -181,7 +181,8 @@ fn create_providers(config: &VersualizerConfig) -> Vec<Box<dyn LyricsProvider>> 
                             None
                         } else {
                             info!("Initializing Spotify lyrics provider (sp_dc configured)");
-                            match SpotifyLyricsProvider::new(sp_dc) {
+                            let secret_key_url = config.spotify.secret_key_url.clone();
+                            match SpotifyLyricsProvider::new(sp_dc, secret_key_url) {
                                 Ok(provider) => Some(Box::new(provider) as Box<dyn LyricsProvider>),
                                 Err(e) => {
                                     error!("Failed to create Spotify lyrics provider: {}", e);

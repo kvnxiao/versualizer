@@ -55,8 +55,14 @@ pub fn use_sync_engine_bridge(sync_engine: &Arc<SyncEngine>, karaoke: KaraokeSta
         let mut karaoke = karaoke;
         spawn(async move {
             loop {
+                // Read timer state into local variables to avoid holding borrow across await
+                let (is_playing, poll_interval) = {
+                    let t = timer.peek();
+                    (t.is_playing(), t.active_poll_interval())
+                };
+
                 // Only update when playing and we have lyrics
-                if timer.peek().is_playing() {
+                if is_playing {
                     if let Some(ref lyrics) = *karaoke.lyrics.peek() {
                         // Compute current position from local timer
                         let position_ms = timer.peek().interpolated_position_ms();
@@ -71,7 +77,7 @@ pub fn use_sync_engine_bridge(sync_engine: &Arc<SyncEngine>, karaoke: KaraokeSta
                     }
 
                     // Active polling: at configured framerate for smooth line transitions
-                    tokio::time::sleep(timer.peek().active_poll_interval()).await;
+                    tokio::time::sleep(poll_interval).await;
                 } else {
                     // Idle polling: reduced CPU usage when paused
                     tokio::time::sleep(LocalPlaybackTimer::IDLE_POLL_INTERVAL).await;
