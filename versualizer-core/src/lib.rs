@@ -13,7 +13,7 @@ pub mod time;
 pub use cache::LyricsCache;
 pub use config::{
     AnimationConfig, LayoutConfig, LyricsConfig, LyricsProviderType, MusicConfig, ProvidersConfig,
-    UiConfig, VersualizerConfig, WindowConfig,
+    UiConfig, VersualizerConfig,
 };
 pub use error::CoreError;
 pub use fetcher::LyricsFetcher;

@@ -4,6 +4,7 @@ mod bridge;
 mod components;
 mod state;
 mod theme_watcher;
+mod window_resize;
 mod window_state;
 
 use crate::app::App;
@@ -121,17 +122,16 @@ fn main() {
     // Load saved window position if available
     let saved_position = WindowState::load();
 
-    // Configure window
+    // Configure window with default initial size
+    // Window will be auto-resized by CSS-driven hook after first render
     let window = WindowBuilder::new()
         .with_title("Versualizer")
         .with_transparent(true)
         .with_decorations(false)
         .with_resizable(true)
+        .with_maximizable(false)
         .with_always_on_top(true)
-        .with_inner_size(LogicalSize::new(
-            f64::from(config.ui.window.width_px),
-            f64::from(config.ui.window.height_px),
-        ));
+        .with_inner_size(LogicalSize::new(800.0, 200.0));
 
     // Apply saved position if available
     let window = if let Some(state) = saved_position {

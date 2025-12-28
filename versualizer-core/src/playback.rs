@@ -92,10 +92,11 @@ impl PlaybackState {
         let actual = other.position;
 
         // If the difference is larger than threshold, a seek occurred
+        // Use saturating_sub to handle case where Duration subtraction could underflow
         if actual > expected {
-            actual - expected > threshold
+            actual.saturating_sub(expected) > threshold
         } else {
-            expected - actual > threshold
+            expected.saturating_sub(actual) > threshold
         }
     }
 }

@@ -97,6 +97,10 @@ fn handle_sync_event(
         // === Lyrics events ===
         SyncEvent::LyricsLoaded { lyrics } => {
             karaoke.set_lyrics(&lyrics);
+            // Set initial animation offset based on current playback position
+            // This ensures the animation starts at the correct progress when lyrics load mid-song
+            let current_pos_ms = timer.peek().interpolated_position_ms();
+            karaoke.sync_animation_position(current_pos_ms);
             info!("Loaded {} precomputed lyric lines", lyrics.lines.len());
         }
         SyncEvent::LyricsNotFound => {
@@ -116,7 +120,10 @@ fn handle_sync_event(
         }
         SyncEvent::SeekOccurred { position } => {
             // Seek is a major event: hard sync immediately
-            timer.write().hard_sync(position.as_millis_u64());
+            let pos_ms = position.as_millis_u64();
+            timer.write().hard_sync(pos_ms);
+            // Sync animation position (forces animation restart with correct offset)
+            karaoke.sync_animation_position(pos_ms);
         }
         SyncEvent::TrackChanged { .. } => {
             // Clear lyrics and reset timer

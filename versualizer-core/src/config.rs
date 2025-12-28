@@ -101,8 +101,6 @@ pub struct UiConfig {
     pub layout: LayoutConfig,
     #[serde(default)]
     pub animation: AnimationConfig,
-    #[serde(default)]
-    pub window: WindowConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -156,33 +154,6 @@ impl Default for AnimationConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WindowConfig {
-    #[serde(default = "default_window_width")]
-    pub width_px: u32,
-    #[serde(default = "default_window_height")]
-    pub height_px: u32,
-}
-
-const DEFAULT_WINDOW_WIDTH: u32 = 800;
-const DEFAULT_WINDOW_HEIGHT: u32 = 200;
-
-const fn default_window_width() -> u32 {
-    DEFAULT_WINDOW_WIDTH
-}
-
-const fn default_window_height() -> u32 {
-    DEFAULT_WINDOW_HEIGHT
-}
-
-impl Default for WindowConfig {
-    fn default() -> Self {
-        Self {
-            width_px: DEFAULT_WINDOW_WIDTH,
-            height_px: DEFAULT_WINDOW_HEIGHT,
-        }
-    }
-}
 
 impl VersualizerConfig {
     /// Get the configuration directory path (~/.config/versualizer/)
@@ -274,10 +245,6 @@ const CONFIG_TEMPLATE_UI: &str = concatcp!(
     "# but potential visual jumps. Higher values = fewer syncs but may drift.\n",
     "# Default ", DEFAULT_DRIFT_THRESHOLD_MS, "ms tolerates ~2-3 poll intervals while keeping lyrics visually in sync.\n",
     "drift_threshold_ms = ", DEFAULT_DRIFT_THRESHOLD_MS, "\n",
-    "\n",
-    "[ui.window]\n",
-    "width_px = ", DEFAULT_WINDOW_WIDTH, "\n",
-    "height_px = ", DEFAULT_WINDOW_HEIGHT, "\n",
 );
 
 #[cfg(test)]
@@ -310,18 +277,10 @@ mod tests {
     }
 
     #[test]
-    fn test_window_config_default() {
-        let config = WindowConfig::default();
-        assert_eq!(config.width_px, 800);
-        assert_eq!(config.height_px, 200);
-    }
-
-    #[test]
     fn test_ui_config_default() {
         let config = UiConfig::default();
         assert_eq!(config.layout.max_lines, 3);
         assert_eq!(config.animation.framerate, 60);
-        assert_eq!(config.window.width_px, 800);
     }
 
     #[test]
@@ -380,10 +339,6 @@ upcoming_line_scale = 0.7
 [ui.animation]
 framerate = 30
 drift_threshold_ms = 500
-
-[ui.window]
-width_px = 1024
-height_px = 300
 "#;
 
         let config: VersualizerConfig = toml::from_str(toml_str).unwrap();
@@ -395,7 +350,6 @@ height_px = 300
         assert_eq!(config.ui.layout.max_lines, 2);
         assert_eq!(config.ui.animation.framerate, 30);
         assert_eq!(config.ui.animation.drift_threshold_ms, 500);
-        assert_eq!(config.ui.window.width_px, 1024);
     }
 
     #[test]
@@ -417,6 +371,5 @@ providers = ["lrclib"]
         // Check that defaults are applied
         assert_eq!(config.ui.layout.max_lines, 3);
         assert_eq!(config.ui.animation.framerate, 60);
-        assert_eq!(config.ui.window.width_px, 800);
     }
 }

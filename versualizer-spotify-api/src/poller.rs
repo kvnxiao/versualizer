@@ -124,8 +124,7 @@ impl SpotifyPoller {
 
             PlaybackState::new(context.is_playing, track_info, position, duration)
         } else {
-            // No active playback - this happens when no Spotify device is active
-            info!("Spotify: no active playback");
+            // No active playback - SyncEngine will emit PlaybackStopped event
             PlaybackState::default()
         };
 

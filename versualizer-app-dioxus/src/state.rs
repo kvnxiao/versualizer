@@ -123,6 +123,9 @@ pub struct KaraokeState {
     pub current_index: Signal<i32>,
     /// Whether playback is active (used by UI for animation state)
     pub is_playing: Signal<bool>,
+    /// Position at last seek/sync in milliseconds (used to calculate animation offset).
+    /// Also used as part of the animation key to force restart on seek or lyrics load.
+    pub animation_sync_position_ms: Signal<u64>,
 }
 
 impl KaraokeState {
@@ -133,7 +136,15 @@ impl KaraokeState {
             lyrics: Signal::new(None),
             current_index: Signal::new(INTRO_LINE_INDEX),
             is_playing: Signal::new(false),
+            animation_sync_position_ms: Signal::new(0),
         }
+    }
+
+    /// Sync the animation position for seek events or initial lyrics load.
+    /// This updates the position used to calculate animation offset and forces
+    /// animation restart by changing the animation key.
+    pub fn sync_animation_position(&mut self, position_ms: u64) {
+        self.animation_sync_position_ms.set(position_ms);
     }
 
     /// Set lyrics from an LRC file, precomputing all timing info

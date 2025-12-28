@@ -25,6 +25,7 @@ pub fn KaraokeLine() -> Element {
     let is_playing = *karaoke.is_playing.read();
     let current_index = *karaoke.current_index.read(); // i32: -1 = intro, 0+ = line index
     let lyrics = karaoke.lyrics.read();
+    let animation_sync_position_ms = *karaoke.animation_sync_position_ms.read();
 
     // Calculate how many lines to request (visible + buffer)
     let visible_count = config.layout.max_lines;
@@ -156,8 +157,26 @@ pub fn KaraokeLine() -> Element {
                     // Use absolute line index as key for stable DOM elements
                     let line_key = format!("line-{line_absolute_idx}");
 
-                    // For karaoke fill animation, use start_time to force restart
-                    let animation_key = line.start_time_ms;
+                    // For karaoke fill animation, use composite key to force restart on:
+                    // 1. Line change (start_time changes)
+                    // 2. Seek/sync within same line (animation_sync_position_ms changes)
+                    let animation_key = format!("{}-{}", line.start_time_ms, animation_sync_position_ms);
+
+                    // Calculate animation offset for seek support (negative delay starts animation partway)
+                    // Only apply offset if we've synced into this line
+                    let animation_delay_ms: i64 = if animation_sync_position_ms >= line.start_time_ms
+                        && animation_sync_position_ms < line.start_time_ms.saturating_add(line.duration_ms)
+                    {
+                        // We're syncing within this line - calculate offset
+                        let offset = animation_sync_position_ms.saturating_sub(line.start_time_ms);
+                        // Negative delay to start animation partway through
+                        // Safe: offset is always <= duration which fits in i64
+                        #[allow(clippy::cast_possible_wrap)]
+                        let neg_offset = -(offset as i64);
+                        neg_offset
+                    } else {
+                        0
+                    };
 
                     rsx! {
                         div {
@@ -167,10 +186,11 @@ pub fn KaraokeLine() -> Element {
 
                             if is_current {
                                 // Current line with karaoke fill animation
-                                // Wrap in a keyed div to restart animation on line change
+                                // Wrap in a keyed div to restart animation on line change or seek
                                 div {
                                     key: "{animation_key}",
                                     class: "current-line-wrapper",
+                                    style: "--animation-delay: {animation_delay_ms}ms;",
                                     span {
                                         class: "current-line-unsung",
                                         "{line.text}"

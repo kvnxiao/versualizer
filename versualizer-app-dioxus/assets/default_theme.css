@@ -33,7 +33,12 @@
   --current-line-scale: 1.0;
   /* Scale for upcoming lines */
   --upcoming-line-scale: 0.8;
-  /* --max-lines: 3; Set dynamically from config via inline style. Uncomment to override */
+  /* Optional: Override maximum number of lines visible (uncomment to use) */
+  /* --max-lines: 3; */
+  /* Optional: Override automatic window sizing (uncomment to use) */
+  /* Window dimensions are automatically calculated from .lines element size */
+  /* --window-width: 800px; */
+  /* --window-height: 200px; */
 }
 
 * {
@@ -134,6 +139,8 @@ html, body {
   clip-path: inset(0 100% 0 0);
   animation: karaoke-fill var(--duration, 5s) linear forwards;
   animation-play-state: var(--play-state, running);
+  /* Negative animation-delay starts the animation partway through (for seek support) */
+  animation-delay: var(--animation-delay, 0ms);
 }
 
 /* Upcoming line text (no animation) */

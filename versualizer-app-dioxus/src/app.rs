@@ -1,5 +1,6 @@
 use crate::components::KaraokeLine;
 use crate::theme_watcher::use_theme_watcher;
+use crate::window_resize::use_window_auto_resize;
 use crate::window_state::WindowState;
 use dioxus::desktop::tao::event::{Event as WryEvent, WindowEvent};
 use dioxus::desktop::{use_window, use_wry_event_handler};
@@ -17,6 +18,9 @@ pub fn App() -> Element {
     // Get reactive CSS content from theme watcher
     // This watches ~/.config/versualizer/theme.css for changes and hot-reloads
     let css_content = use_theme_watcher(cancel_token.clone());
+
+    // Auto-resize window when CSS changes affect content dimensions
+    use_window_auto_resize(css_content);
 
     // Handle window close event (triggered by X button)
     // Save window position before closing
