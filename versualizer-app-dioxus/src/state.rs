@@ -1,6 +1,6 @@
 use dioxus::prelude::*;
 use std::time::{Duration, Instant};
-use tracing::trace;
+use tracing::{info, trace};
 use versualizer_core::LrcFile;
 
 /// Convert u128 milliseconds to u64, saturating at `u64::MAX`.
@@ -210,21 +210,25 @@ pub struct LocalPlaybackTimer {
     is_playing: bool,
     /// Polling interval when playback is active (derived from configured framerate)
     active_poll_interval: Duration,
+    /// Drift threshold in milliseconds (configurable)
+    drift_threshold_ms: u64,
 }
 
 impl LocalPlaybackTimer {
-    /// Drift threshold in milliseconds. If local and server positions differ by more
-    /// than this amount, we hard-sync. Otherwise, we trust our local timer.
-    /// 300ms tolerates ~2-3 poll intervals of cumulative drift while keeping lyrics
-    /// visually in sync (less than a syllable of error).
-    const DRIFT_THRESHOLD_MS: u64 = 300;
-
     /// Polling interval when playback is idle (reduced CPU usage)
     pub const IDLE_POLL_INTERVAL: Duration = Duration::from_millis(100);
 
     /// Create a new timer starting at position 0, paused, with the given framerate
+    /// and drift threshold.
+    ///
+    /// # Arguments
+    ///
+    /// * `framerate` - Target framerate in FPS (used to derive poll interval)
+    /// * `drift_threshold_ms` - If local and server positions differ by more than this
+    ///   amount, a hard sync is performed. Typically 300ms tolerates ~2-3 poll intervals
+    ///   of cumulative drift while keeping lyrics visually in sync.
     #[must_use]
-    pub fn new(framerate: u32) -> Self {
+    pub fn new(framerate: u32, drift_threshold_ms: u64) -> Self {
         // Convert framerate (fps) to poll interval (ms per frame)
         // e.g., 60 fps = 1000ms / 60 = ~16ms per frame
         let interval_ms = if framerate > 0 {
@@ -238,6 +242,7 @@ impl LocalPlaybackTimer {
             reference_instant: Instant::now(),
             is_playing: false,
             active_poll_interval: Duration::from_millis(interval_ms),
+            drift_threshold_ms,
         }
     }
 
@@ -271,7 +276,7 @@ impl LocalPlaybackTimer {
     }
 
     /// Apply drift correction if the server position differs significantly.
-    /// Only syncs if the drift exceeds `DRIFT_THRESHOLD_MS`, otherwise
+    /// Only syncs if the drift exceeds the configured threshold, otherwise
     /// trusts the local timer to avoid unnecessary jumps.
     ///
     /// Returns `true` if a correction was applied.
@@ -286,10 +291,10 @@ impl LocalPlaybackTimer {
             "ahead"
         };
 
-        if drift > Self::DRIFT_THRESHOLD_MS {
-            trace!(
+        if drift > self.drift_threshold_ms {
+            info!(
                 "Drift correction applied: local={}ms, server={}ms, drift={}ms ({}) > threshold={}ms",
-                local, server_position_ms, drift, drift_direction, Self::DRIFT_THRESHOLD_MS
+                local, server_position_ms, drift, drift_direction, self.drift_threshold_ms
             );
             self.hard_sync(server_position_ms);
             true
@@ -297,7 +302,7 @@ impl LocalPlaybackTimer {
             // Small drift: ignore, local timer is accurate enough
             trace!(
                 "Drift within threshold: local={}ms, server={}ms, drift={}ms ({}) <= threshold={}ms",
-                local, server_position_ms, drift, drift_direction, Self::DRIFT_THRESHOLD_MS
+                local, server_position_ms, drift, drift_direction, self.drift_threshold_ms
             );
             false
         }
@@ -327,6 +332,6 @@ impl LocalPlaybackTimer {
 
 impl Default for LocalPlaybackTimer {
     fn default() -> Self {
-        Self::new(60) // Default to 60fps
+        Self::new(60, 300) // Default to 60fps, 300ms drift threshold
     }
 }

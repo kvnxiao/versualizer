@@ -144,6 +144,11 @@ pub struct AnimationConfig {
     pub transition_ms: u32,
     #[serde(default = "default_easing")]
     pub easing: String,
+    /// Drift threshold in milliseconds. If local and server playback positions differ
+    /// by more than this amount, a hard sync is performed. Otherwise, the local timer
+    /// is trusted to avoid unnecessary visual jumps.
+    #[serde(default = "default_drift_threshold_ms")]
+    pub drift_threshold_ms: u64,
 }
 
 const fn default_animation_framerate() -> u32 {
@@ -158,12 +163,17 @@ fn default_easing() -> String {
     "ease-in-out".to_string()
 }
 
+const fn default_drift_threshold_ms() -> u64 {
+    300
+}
+
 impl Default for AnimationConfig {
     fn default() -> Self {
         Self {
             framerate: default_animation_framerate(),
             transition_ms: default_transition_ms(),
             easing: default_easing(),
+            drift_threshold_ms: default_drift_threshold_ms(),
         }
     }
 }
@@ -285,6 +295,11 @@ transition_ms = 200
 # CSS easing function for transitions
 # https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Values/easing-function
 easing = "ease-in-out"
+# Drift threshold in milliseconds. If local and server playback positions differ
+# by more than this amount, a hard sync is performed. Lower values = more syncs
+# but potential visual jumps. Higher values = fewer syncs but may drift.
+# Default 300ms tolerates ~2-3 poll intervals while keeping lyrics visually in sync.
+drift_threshold_ms = 300
 
 [ui.window]
 width_px = 800

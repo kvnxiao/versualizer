@@ -13,15 +13,16 @@ use versualizer_core::{DurationExt, SyncEngine, SyncEvent};
 ///
 /// The timer approach (inspired by dioxus-motion) reduces re-renders by:
 /// - Only hard-syncing on major events (play/pause/seek/track change)
-/// - Using drift correction (300ms threshold) for regular position updates
+/// - Using drift correction (configurable threshold) for regular position updates
 /// - Locally computing line index at configured framerate instead of on every sync event
 pub fn use_sync_engine_bridge(sync_engine: &Arc<SyncEngine>, karaoke: KaraokeState) {
-    // Get UI config from context to read the configured framerate
+    // Get UI config from context to read the configured framerate and drift threshold
     let ui_config: UiConfig = use_context();
     let framerate = ui_config.animation.framerate;
+    let drift_threshold_ms = ui_config.animation.drift_threshold_ms;
 
-    // Create the local playback timer with configured framerate
-    let timer = use_signal(|| LocalPlaybackTimer::new(framerate));
+    // Create the local playback timer with configured framerate and drift threshold
+    let timer = use_signal(|| LocalPlaybackTimer::new(framerate, drift_threshold_ms));
 
     // Clone once for the closure, then move into async block
     let sync_engine = sync_engine.clone();
