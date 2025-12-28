@@ -13,9 +13,12 @@ use tokio_util::sync::CancellationToken;
 use tracing::{error, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 use versualizer_core::config::LyricsProviderType;
-use versualizer_core::providers::LrclibProvider;
-use versualizer_core::{LyricsCache, LyricsProvider, SyncEngine, SyncEvent, VersualizerConfig};
-use versualizer_spotify::{LyricsFetcher, SpotifyLyricsProvider, SpotifyOAuth, SpotifyPoller};
+use versualizer_core::{
+    LyricsCache, LyricsFetcher, LyricsProvider, SyncEngine, SyncEvent, VersualizerConfig,
+};
+use versualizer_lyrics_lrclib::LrclibProvider;
+use versualizer_lyrics_spotify::SpotifyLyricsProvider;
+use versualizer_spotify_api::{SpotifyOAuth, SpotifyPoller};
 
 fn main() {
     // Initialize logging
@@ -106,8 +109,8 @@ fn main() {
         .with_decorations(false)
         .with_always_on_top(true)
         .with_inner_size(LogicalSize::new(
-            f64::from(config.ui.window.width),
-            f64::from(config.ui.window.height),
+            f64::from(config.ui.window.width_px),
+            f64::from(config.ui.window.height_px),
         ));
 
     // Disable window shadow on Windows for true overlay effect

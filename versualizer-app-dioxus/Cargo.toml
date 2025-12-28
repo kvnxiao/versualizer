@@ -15,7 +15,9 @@ path = "src/main.rs"
 
 [dependencies]
 versualizer-core = { path = "../versualizer-core" }
-versualizer-spotify = { path = "../versualizer-spotify" }
+versualizer-lyrics-lrclib = { path = "../versualizer-lyrics-lrclib" }
+versualizer-lyrics-spotify = { path = "../versualizer-lyrics-spotify" }
+versualizer-spotify-api = { path = "../versualizer-spotify-api" }
 
 # Dioxus desktop
 dioxus = { version = "0.7", features = ["desktop"] }

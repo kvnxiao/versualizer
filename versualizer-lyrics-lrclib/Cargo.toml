@@ -1,0 +1,24 @@
+[package]
+name = "versualizer-lyrics-lrclib"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "LRCLIB lyrics provider for Versualizer"
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+versualizer-core = { path = "../versualizer-core" }
+
+async-trait = { workspace = true }
+reqwest = { workspace = true }
+reqwest-middleware = { workspace = true }
+reqwest-retry = { workspace = true }
+serde = { workspace = true }
+tracing = { workspace = true }
+urlencoding = { workspace = true }
+
+[lints]
+workspace = true

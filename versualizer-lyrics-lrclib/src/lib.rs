@@ -1,12 +1,10 @@
-use crate::error::CoreError;
-use crate::lrc::LrcFile;
-use crate::provider::{FetchedLyrics, LyricsProvider, LyricsQuery, LyricsResult};
 use async_trait::async_trait;
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
 use reqwest_retry::{policies::ExponentialBackoff, RetryTransientMiddleware};
 use serde::Deserialize;
 use std::time::Duration;
 use tracing::{debug, info, warn};
+use versualizer_core::{CoreError, FetchedLyrics, LrcFile, LyricsProvider, LyricsQuery, LyricsResult};
 
 const LRCLIB_API_URL: &str = "https://lrclib.net/api";
 

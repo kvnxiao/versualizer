@@ -37,18 +37,6 @@ pub enum SpotifyError {
     /// Poller was stopped.
     #[error("Spotify poller stopped")]
     PollerStopped,
-
-    /// Lyrics provider error.
-    #[error("Spotify lyrics provider failed: {reason}")]
-    LyricsProviderFailed { reason: String },
-
-    /// Network request failed.
-    #[error("Network request failed: {0}")]
-    NetworkError(#[from] reqwest::Error),
-
-    /// HTTP middleware error.
-    #[error("HTTP middleware error: {0}")]
-    MiddlewareError(#[from] reqwest_middleware::Error),
 }
 
 /// Convenience type alias for Results with `SpotifyError`.

@@ -134,9 +134,9 @@ impl Default for AnimationConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WindowConfig {
     #[serde(default = "default_window_width")]
-    pub width: u32,
+    pub width_px: u32,
     #[serde(default = "default_window_height")]
-    pub height: u32,
+    pub height_px: u32,
 }
 
 const fn default_window_width() -> u32 {
@@ -150,8 +150,8 @@ const fn default_window_height() -> u32 {
 impl Default for WindowConfig {
     fn default() -> Self {
         Self {
-            width: default_window_width(),
-            height: default_window_height(),
+            width_px: default_window_width(),
+            height_px: default_window_height(),
         }
     }
 }
@@ -230,16 +230,21 @@ poll_interval_ms = 1000
 providers = ["lrclib"]
 
 [ui.layout]
-max_lines = 3  # The number of song lines to display in the visualizer
-current_line_scale = 1.0  # Scale factor for the current (highlighted) line being sung
-upcoming_line_scale = 0.8  # Scale factor for upcoming lines to be sung
+# The number of song lines to display in the visualizer
+max_lines = 3
+# Scale factor for the current (highlighted) line being sung
+current_line_scale = 1.0
+# Scale factor for upcoming lines to be sung
+upcoming_line_scale = 0.8
 
 [ui.animation]
-framerate = 60  # Animation framerate in frames per second
+# Animation framerate in frames per second
+framerate = 60
 transition_ms = 200
-easing = "ease-in-out"  # CSS easing function for transitions https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Values/easing-function
+# CSS easing function for transitions https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Values/easing-function
+easing = "ease-in-out"
 
 [ui.window]
-width = 800
-height = 200
+width_px = 800
+height_px = 200
 "#;

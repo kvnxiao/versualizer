@@ -1,17 +1,18 @@
 pub mod cache;
 pub mod config;
 pub mod error;
+pub mod fetcher;
 pub mod lrc;
 pub mod paths;
 pub mod playback;
 pub mod provider;
-pub mod providers;
 pub mod sync;
 pub mod time;
 
 pub use cache::LyricsCache;
 pub use config::{AnimationConfig, LayoutConfig, UiConfig, VersualizerConfig, WindowConfig};
 pub use error::CoreError;
+pub use fetcher::LyricsFetcher;
 pub use lrc::{LrcFile, LrcLine, LrcMetadata, LrcWord};
 pub use paths::{CONFIG_DIR_NAME, CONFIG_FILE_NAME, LYRICS_CACHE_DB_FILE_NAME};
 pub use playback::{PlaybackState, TrackInfo};

@@ -24,7 +24,7 @@ tracing = { workspace = true }
 dirs = { workspace = true }
 async-trait = { workspace = true }
 chrono = { workspace = true }
-urlencoding = { workspace = true }
+tokio-util = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }

@@ -5054,7 +5054,9 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "versualizer-core",
- "versualizer-spotify",
+ "versualizer-lyrics-lrclib",
+ "versualizer-lyrics-spotify",
+ "versualizer-spotify-api",
 ]
 
 [[package]]
@@ -5073,24 +5075,47 @@ dependencies = [
  "thiserror 2.0.17",
  "tokio",
  "tokio-rusqlite",
+ "tokio-util",
  "toml",
  "tracing",
- "urlencoding",
 ]
 
 [[package]]
-name = "versualizer-spotify"
+name = "versualizer-lyrics-lrclib"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "reqwest",
+ "reqwest-middleware",
+ "reqwest-retry",
+ "serde",
+ "tracing",
+ "urlencoding",
+ "versualizer-core",
+]
+
+[[package]]
+name = "versualizer-lyrics-spotify"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "reqwest",
+ "reqwest-middleware",
+ "reqwest-retry",
+ "serde",
+ "tracing",
+ "versualizer-core",
+]
+
+[[package]]
+name = "versualizer-spotify-api"
+version = "0.1.0"
+dependencies = [
  "axum",
  "chrono",
  "dirs",
  "futures",
  "open",
- "reqwest",
- "reqwest-middleware",
- "reqwest-retry",
  "rspotify",
  "serde",
  "serde_json",

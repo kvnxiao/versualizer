@@ -1,6 +1,12 @@
 [workspace]
 resolver = "2"
-members = ["versualizer-core", "versualizer-spotify", "versualizer-app-dioxus"]
+members = [
+    "versualizer-core",
+    "versualizer-lyrics-lrclib",
+    "versualizer-lyrics-spotify",
+    "versualizer-spotify-api",
+    "versualizer-app-dioxus",
+]
 
 [workspace.package]
 version = "0.1.0"
