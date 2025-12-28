@@ -2,6 +2,7 @@ mod app;
 mod bridge;
 mod components;
 mod state;
+mod theme_watcher;
 mod window_state;
 
 use crate::app::App;
@@ -145,13 +146,10 @@ fn main() {
         window.with_undecorated_shadow(false)
     };
 
-    // Embed CSS directly to avoid path resolution issues in desktop mode
-    let css = include_str!("../assets/style.css");
-    let custom_head = format!(r"<style>{css}</style>");
-
+    // CSS is now handled by the theme_watcher module in the App component
+    // This allows for hot-reload of CSS from ~/.config/versualizer/theme.css
     let dioxus_config = dioxus::desktop::Config::default()
         .with_window(window)
-        .with_custom_head(custom_head)
         .with_disable_context_menu(true);
 
     // Launch Dioxus application

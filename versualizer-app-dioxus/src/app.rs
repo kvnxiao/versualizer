@@ -1,4 +1,5 @@
 use crate::components::KaraokeLine;
+use crate::theme_watcher::use_theme_watcher;
 use crate::window_state::WindowState;
 use dioxus::desktop::tao::event::{Event as WryEvent, WindowEvent};
 use dioxus::desktop::{use_window, use_wry_event_handler};
@@ -12,6 +13,10 @@ use tracing::info;
 pub fn App() -> Element {
     let window = use_window();
     let cancel_token: CancellationToken = use_context();
+
+    // Get reactive CSS content from theme watcher
+    // This watches ~/.config/versualizer/theme.css for changes and hot-reloads
+    let css_content = use_theme_watcher(cancel_token.clone());
 
     // Handle window close event (triggered by X button)
     // Save window position before closing
@@ -57,14 +62,14 @@ pub fn App() -> Element {
     };
 
     rsx! {
+        // Dynamic style element - re-renders when css_content signal changes
+        style { dangerous_inner_html: "{css_content}" }
+
         div {
-            class: "container",
+            class: "app",
             onmousedown: on_mouse_down,
 
-            KaraokeLine {
-                sung_color: "#00FF00".to_string(),
-                unsung_color: "#FFFFFF".to_string(),
-            }
+            KaraokeLine {}
         }
     }
 }

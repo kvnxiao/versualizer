@@ -1,0 +1,119 @@
+/**
+ * Modify this file to customize the appearance of the karaoke visualizer in real-time
+ * without restarting the app. The CSS variables below are in use in the default theme
+ * for convenience. Feel free to completely overhaul the styling as desired, as long as
+ * the necessary class names are used.
+ *
+ * https://developer.mozilla.org/en-US/docs/Learn_web_development/Core/Styling_basics/Values_and_units
+ * for more information on valid CSS units like rem, em, px.
+ *
+ * https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Values/color_value
+ * for more information on valid CSS color values.
+ */
+:root {
+  /* Color for text that has been sung (the "fill" color) */
+  --current-sung-color: #00FF00;
+  /* Color for current line's unsung text (the text being revealed by the fill) */
+  --current-unsung-color: #FFFFFF;
+  /* Color for upcoming lines (use rgba for opacity) */
+  --unsung-color: rgba(255, 255, 255, 0.3);
+  /* Background color of the container */
+  --background-color: rgba(0, 0, 0, 0.3);
+  /* Base font size - affects all text sizing */
+  --base-font-rem-size: 32px;
+  /* Line height multiplier (on each line of text) */
+  --base-line-height: 1.5;
+  /* Font family - for lyrics in non-English languages ensure that appropriate fonts are specified here with fallbacks */
+  --font-family: "Microsoft YaHei", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+  /* Font size for the current line */
+  --current-line-font-size: 1.0rem;
+  /* Font size for upcoming lines */
+  --upcoming-line-font-size: 0.8rem;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  user-select: none;
+  pointer-events: none;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  font-size: var(--base-font-rem-size);
+  line-height: var(--base-line-height);
+  font-family: var(--font-family);
+  overflow: hidden;
+}
+
+.app {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--background-color);
+}
+
+/* Container for karaoke lines - clips overflow for buffer lines */
+.lines {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  /* Height is already set dynamically via inline style based on max_lines */
+}
+
+/* Individual line with transform-based positioning and scaling */
+.karaoke-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  white-space: nowrap;
+  font-size: var(--base-font-size);
+  line-height: var(--base-line-height);
+  /* Transform is set via inline style: translateY() scale() */
+  transform-origin: center center;
+  /* No CSS transitions - dioxus-motion handles animations */
+}
+
+/* Wrapper for current line text (enables animation restart via key) */
+.current-line-wrapper {
+  position: relative;
+  display: inline-block;
+  font-size: var(--current-line-font-size);
+}
+
+/* Karaoke text animation */
+@keyframes karaoke-fill {
+  from { clip-path: inset(0 100% 0 0); }
+  to { clip-path: inset(0 0 0 0); }
+}
+
+/* Unsung text for current line (background layer) */
+.current-line-unsung {
+  color: var(--current-unsung-color);
+}
+
+/* Sung text for current line (foreground layer with fill animation) */
+.current-line-sung {
+  position: absolute;
+  left: 0;
+  top: 0;
+  white-space: nowrap;
+  color: var(--current-sung-color);
+  clip-path: inset(0 100% 0 0);
+  animation: karaoke-fill var(--duration, 5s) linear forwards;
+  animation-play-state: var(--play-state, running);
+}
+
+/* Upcoming line text (no animation) */
+.upcoming-line {
+  color: var(--unsung-color);
+  font-size: var(--upcoming-line-font-size);
+}

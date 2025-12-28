@@ -22,13 +22,12 @@ const fn calculate_line_slot_height() -> f32 {
 
 /// Karaoke display component that shows current and upcoming lyrics
 /// with smooth animations powered by dioxus-motion.
+///
+/// Colors are configured via CSS variables in theme.css:
+/// - `--sung-color`: Color for sung text (use rgba for transparency)
+/// - `--unsung-color`: Color for unsung text (use rgba for transparency)
 #[component]
-pub fn KaraokeLine(
-    /// Color for text that has been sung (e.g., "#00FF00")
-    sung_color: String,
-    /// Color for text that hasn't been sung yet (e.g., "#FFFFFF")
-    unsung_color: String,
-) -> Element {
+pub fn KaraokeLine() -> Element {
     let karaoke = use_context::<KaraokeState>();
     let config = use_context::<UiConfig>();
 
@@ -79,13 +78,9 @@ pub fn KaraokeLine(
         );
     });
 
-    // Container style with dynamic height and CSS variables
-    let container_style = format!(
-        "--sung-color: {sung_color}; --unsung-color: {unsung_color}; \
-         --transition-duration: {}ms; --transition-easing: {}; \
-         height: {container_height}px;",
-        config.animation.transition_ms, config.animation.easing
-    );
+    // Container style with dynamic height
+    // Colors and styling are defined in theme.css
+    let container_style = format!("height: {container_height}px;");
 
     // Play state for CSS animation
     let play_state = if is_playing { "running" } else { "paused" };
@@ -119,7 +114,7 @@ pub fn KaraokeLine(
     if lyrics.is_none() || visible.is_empty() {
         return rsx! {
             div {
-                class: "karaoke-container",
+                class: "lines",
                 style: "{container_style}",
             }
         };
@@ -142,7 +137,7 @@ pub fn KaraokeLine(
 
     rsx! {
         div {
-            class: "karaoke-container",
+            class: "lines",
             style: "{container_style}",
 
             for (idx, line) in visible.iter().enumerate() {
@@ -178,23 +173,19 @@ pub fn KaraokeLine(
                         config.layout.upcoming_line_scale
                     };
 
-                    // Calculate opacity based on position
-                    // Buffer zone: opacity 0
-                    // Visible zone: current = 1.0, upcoming = 0.5
+                    // Calculate opacity for buffer zone fade in/out effects
+                    // Lines in visible area have full opacity; buffer zones fade to 0
                     #[allow(clippy::cast_precision_loss)]
                     let visible_count_f32 = visible_count as f32;
                     let opacity = if distance_from_current < 0.0 {
-                        // Above current (buffer zone above)
+                        // Above current (buffer zone above) - fade in
                         0.0_f32.max(1.0 + distance_from_current)
                     } else if distance_from_current >= visible_count_f32 {
-                        // Below visible area (buffer zone below)
+                        // Below visible area (buffer zone below) - fade out
                         0.0_f32.max(1.0 - (distance_from_current - visible_count_f32 + 1.0))
-                    } else if distance_from_current < 0.5 {
-                        // Current line zone
-                        1.0
                     } else {
-                        // Upcoming lines
-                        0.5
+                        // Visible area - full opacity (colors handle transparency via rgba)
+                        1.0
                     };
 
                     let line_class = if is_current {
@@ -228,20 +219,20 @@ pub fn KaraokeLine(
                                 // Wrap in a keyed div to restart animation on line change
                                 div {
                                     key: "{animation_key}",
-                                    class: "karaoke-text-wrapper",
+                                    class: "current-line-wrapper",
                                     span {
-                                        class: "karaoke-background",
+                                        class: "current-line-unsung",
                                         "{line.text}"
                                     }
                                     span {
-                                        class: "karaoke-foreground",
+                                        class: "current-line-sung",
                                         "{line.text}"
                                     }
                                 }
                             } else {
                                 // Upcoming/buffer lines - static text
                                 span {
-                                    class: "karaoke-upcoming-text",
+                                    class: "upcoming-line",
                                     "{line.text}"
                                 }
                             }

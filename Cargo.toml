@@ -66,6 +66,10 @@ axum = "0.8"
 tokio-util = { version = "0.7", features = ["rt"] }
 ctrlc = { version = "3.4", features = ["termination"] }
 
+# File watching
+notify = "8"
+notify-debouncer-mini = "0.5"
+
 [workspace.lints.rust]
 unsafe_code = "forbid"
 

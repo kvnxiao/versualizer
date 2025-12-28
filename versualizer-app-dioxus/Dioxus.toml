@@ -6,7 +6,5 @@ default_platform = "desktop"
 # Window settings are configured in Rust code
 
 [web.resource]
-style = ["assets/style.css"]
 
 [bundle]
-resources = ["assets/*"]

@@ -1,9 +1,19 @@
 use crate::error::{CoreError, Result};
 use crate::source::MusicSource;
+use const_format::concatcp;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
+
+/// Macro to define an f32 constant and its string representation together.
+/// This ensures the value and string stay in sync.
+macro_rules! define_f32_const {
+    ($name:ident, $name_str:ident = $value:literal) => {
+        const $name: f32 = $value;
+        const $name_str: &str = stringify!($value);
+    };
+}
 
 /// Main configuration structure (source-agnostic)
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -114,24 +124,28 @@ pub struct LayoutConfig {
     pub upcoming_line_scale: f32,
 }
 
+const DEFAULT_MAX_LINES: usize = 3;
+define_f32_const!(DEFAULT_CURRENT_LINE_SCALE, DEFAULT_CURRENT_LINE_SCALE_STR = 1.0);
+define_f32_const!(DEFAULT_UPCOMING_LINE_SCALE, DEFAULT_UPCOMING_LINE_SCALE_STR = 0.8);
+
 const fn default_max_lines() -> usize {
-    3
+    DEFAULT_MAX_LINES
 }
 
 const fn default_current_line_scale() -> f32 {
-    1.0
+    DEFAULT_CURRENT_LINE_SCALE
 }
 
 const fn default_upcoming_line_scale() -> f32 {
-    0.8
+    DEFAULT_UPCOMING_LINE_SCALE
 }
 
 impl Default for LayoutConfig {
     fn default() -> Self {
         Self {
-            max_lines: default_max_lines(),
-            current_line_scale: default_current_line_scale(),
-            upcoming_line_scale: default_upcoming_line_scale(),
+            max_lines: DEFAULT_MAX_LINES,
+            current_line_scale: DEFAULT_CURRENT_LINE_SCALE,
+            upcoming_line_scale: DEFAULT_UPCOMING_LINE_SCALE,
         }
     }
 }
@@ -140,10 +154,6 @@ impl Default for LayoutConfig {
 pub struct AnimationConfig {
     #[serde(default = "default_animation_framerate")]
     pub framerate: u32,
-    #[serde(default = "default_transition_ms")]
-    pub transition_ms: u32,
-    #[serde(default = "default_easing")]
-    pub easing: String,
     /// Drift threshold in milliseconds. If local and server playback positions differ
     /// by more than this amount, a hard sync is performed. Otherwise, the local timer
     /// is trusted to avoid unnecessary visual jumps.
@@ -151,29 +161,22 @@ pub struct AnimationConfig {
     pub drift_threshold_ms: u64,
 }
 
+const DEFAULT_ANIMATION_FRAMERATE: u32 = 60;
+const DEFAULT_DRIFT_THRESHOLD_MS: u64 = 200;
+
 const fn default_animation_framerate() -> u32 {
-    60
-}
-
-const fn default_transition_ms() -> u32 {
-    200
-}
-
-fn default_easing() -> String {
-    "ease-in-out".to_string()
+    DEFAULT_ANIMATION_FRAMERATE
 }
 
 const fn default_drift_threshold_ms() -> u64 {
-    300
+    DEFAULT_DRIFT_THRESHOLD_MS
 }
 
 impl Default for AnimationConfig {
     fn default() -> Self {
         Self {
-            framerate: default_animation_framerate(),
-            transition_ms: default_transition_ms(),
-            easing: default_easing(),
-            drift_threshold_ms: default_drift_threshold_ms(),
+            framerate: DEFAULT_ANIMATION_FRAMERATE,
+            drift_threshold_ms: DEFAULT_DRIFT_THRESHOLD_MS,
         }
     }
 }
@@ -186,19 +189,22 @@ pub struct WindowConfig {
     pub height_px: u32,
 }
 
+const DEFAULT_WINDOW_WIDTH: u32 = 800;
+const DEFAULT_WINDOW_HEIGHT: u32 = 200;
+
 const fn default_window_width() -> u32 {
-    800
+    DEFAULT_WINDOW_WIDTH
 }
 
 const fn default_window_height() -> u32 {
-    200
+    DEFAULT_WINDOW_HEIGHT
 }
 
 impl Default for WindowConfig {
     fn default() -> Self {
         Self {
-            width_px: default_window_width(),
-            height_px: default_window_height(),
+            width_px: DEFAULT_WINDOW_WIDTH,
+            height_px: DEFAULT_WINDOW_HEIGHT,
         }
     }
 }
@@ -280,31 +286,28 @@ providers = ["lrclib"]
 "#;
 
 /// UI config template
-const CONFIG_TEMPLATE_UI: &str = r#"[ui.layout]
-# The number of song lines to display in the visualizer
-max_lines = 3
-# Scale factor for the current (highlighted) line being sung
-current_line_scale = 1.0
-# Scale factor for upcoming lines to be sung
-upcoming_line_scale = 0.8
-
-[ui.animation]
-# Animation framerate in frames per second
-framerate = 60
-transition_ms = 200
-# CSS easing function for transitions
-# https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Values/easing-function
-easing = "ease-in-out"
-# Drift threshold in milliseconds. If local and server playback positions differ
-# by more than this amount, a hard sync is performed. Lower values = more syncs
-# but potential visual jumps. Higher values = fewer syncs but may drift.
-# Default 300ms tolerates ~2-3 poll intervals while keeping lyrics visually in sync.
-drift_threshold_ms = 300
-
-[ui.window]
-width_px = 800
-height_px = 200
-"#;
+const CONFIG_TEMPLATE_UI: &str = concatcp!(
+    "[ui.layout]\n",
+    "# The number of song lines to display in the visualizer\n",
+    "max_lines = ", DEFAULT_MAX_LINES, "\n",
+    "# Scale factor for the current (highlighted) line being sung\n",
+    "current_line_scale = ", DEFAULT_CURRENT_LINE_SCALE_STR, "\n",
+    "# Scale factor for upcoming lines to be sung\n",
+    "upcoming_line_scale = ", DEFAULT_UPCOMING_LINE_SCALE_STR, "\n",
+    "\n",
+    "[ui.animation]\n",
+    "# Animation framerate in frames per second\n",
+    "framerate = ", DEFAULT_ANIMATION_FRAMERATE, "\n",
+    "# Drift threshold in milliseconds. If local and server playback positions differ\n",
+    "# by more than this amount, a hard sync is performed. Lower values = more syncs\n",
+    "# but potential visual jumps. Higher values = fewer syncs but may drift.\n",
+    "# Default ", DEFAULT_DRIFT_THRESHOLD_MS, "ms tolerates ~2-3 poll intervals while keeping lyrics visually in sync.\n",
+    "drift_threshold_ms = ", DEFAULT_DRIFT_THRESHOLD_MS, "\n",
+    "\n",
+    "[ui.window]\n",
+    "width_px = ", DEFAULT_WINDOW_WIDTH, "\n",
+    "height_px = ", DEFAULT_WINDOW_HEIGHT, "\n",
+);
 
 #[cfg(test)]
 mod tests {
@@ -334,9 +337,7 @@ mod tests {
     fn test_animation_config_default() {
         let config = AnimationConfig::default();
         assert_eq!(config.framerate, 60);
-        assert_eq!(config.transition_ms, 200);
-        assert_eq!(config.easing, "ease-in-out");
-        assert_eq!(config.drift_threshold_ms, 300);
+        assert_eq!(config.drift_threshold_ms, 200);
     }
 
     #[test]
@@ -409,8 +410,6 @@ upcoming_line_scale = 0.7
 
 [ui.animation]
 framerate = 30
-transition_ms = 150
-easing = "linear"
 drift_threshold_ms = 500
 
 [ui.window]
@@ -427,7 +426,7 @@ height_px = 300
         assert_eq!(config.ui.layout.max_lines, 2);
         assert!((config.ui.layout.current_line_scale - 1.2).abs() < f32::EPSILON);
         assert_eq!(config.ui.animation.framerate, 30);
-        assert_eq!(config.ui.animation.easing, "linear");
+        assert_eq!(config.ui.animation.drift_threshold_ms, 500);
         assert_eq!(config.ui.window.width_px, 1024);
     }
 

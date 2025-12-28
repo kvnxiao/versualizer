@@ -21,6 +21,7 @@ source-windows-media = []
 source-youtube-music = []
 
 [dependencies]
+const_format = "0.2"
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
