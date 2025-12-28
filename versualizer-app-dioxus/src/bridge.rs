@@ -2,6 +2,7 @@ use crate::state::{KaraokeState, LocalPlaybackTimer};
 use dioxus::prelude::*;
 use std::sync::Arc;
 use tracing::info;
+use versualizer_core::config::UiConfig;
 use versualizer_core::{DurationExt, SyncEngine, SyncEvent};
 
 /// Bridge `SyncEngine` events to Dioxus signals, with local playback timing.
@@ -13,10 +14,14 @@ use versualizer_core::{DurationExt, SyncEngine, SyncEvent};
 /// The timer approach (inspired by dioxus-motion) reduces re-renders by:
 /// - Only hard-syncing on major events (play/pause/seek/track change)
 /// - Using drift correction (300ms threshold) for regular position updates
-/// - Locally computing line index at ~60fps instead of on every sync event
+/// - Locally computing line index at configured framerate instead of on every sync event
 pub fn use_sync_engine_bridge(sync_engine: &Arc<SyncEngine>, karaoke: KaraokeState) {
-    // Create the local playback timer
-    let timer = use_signal(LocalPlaybackTimer::new);
+    // Get UI config from context to read the configured framerate
+    let ui_config: UiConfig = use_context();
+    let framerate = ui_config.animation.framerate;
+
+    // Create the local playback timer with configured framerate
+    let timer = use_signal(|| LocalPlaybackTimer::new(framerate));
 
     // Clone once for the closure, then move into async block
     let sync_engine = sync_engine.clone();
@@ -65,8 +70,8 @@ pub fn use_sync_engine_bridge(sync_engine: &Arc<SyncEngine>, karaoke: KaraokeSta
                         }
                     }
 
-                    // Active polling: ~60fps for smooth line transitions
-                    tokio::time::sleep(LocalPlaybackTimer::ACTIVE_POLL_INTERVAL).await;
+                    // Active polling: at configured framerate for smooth line transitions
+                    tokio::time::sleep(timer.peek().active_poll_interval()).await;
                 } else {
                     // Idle polling: reduced CPU usage when paused
                     tokio::time::sleep(LocalPlaybackTimer::IDLE_POLL_INTERVAL).await;

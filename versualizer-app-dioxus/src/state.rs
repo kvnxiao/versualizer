@@ -208,6 +208,8 @@ pub struct LocalPlaybackTimer {
     reference_instant: Instant,
     /// Whether playback is currently active
     is_playing: bool,
+    /// Polling interval when playback is active (derived from configured framerate)
+    active_poll_interval: Duration,
 }
 
 impl LocalPlaybackTimer {
@@ -217,20 +219,32 @@ impl LocalPlaybackTimer {
     /// visually in sync (less than a syllable of error).
     const DRIFT_THRESHOLD_MS: u64 = 300;
 
-    /// Polling interval when playback is active (targeting ~60fps for smooth updates)
-    pub const ACTIVE_POLL_INTERVAL: Duration = Duration::from_millis(16);
-
     /// Polling interval when playback is idle (reduced CPU usage)
     pub const IDLE_POLL_INTERVAL: Duration = Duration::from_millis(100);
 
-    /// Create a new timer starting at position 0, paused
+    /// Create a new timer starting at position 0, paused, with the given framerate
     #[must_use]
-    pub fn new() -> Self {
+    pub fn new(framerate: u32) -> Self {
+        // Convert framerate (fps) to poll interval (ms per frame)
+        // e.g., 60 fps = 1000ms / 60 = ~16ms per frame
+        let interval_ms = if framerate > 0 {
+            1000 / u64::from(framerate)
+        } else {
+            16 // Default to ~60fps if framerate is 0
+        };
+
         Self {
             reference_position_ms: 0,
             reference_instant: Instant::now(),
             is_playing: false,
+            active_poll_interval: Duration::from_millis(interval_ms),
         }
+    }
+
+    /// Get the active polling interval (derived from configured framerate)
+    #[must_use]
+    pub const fn active_poll_interval(&self) -> Duration {
+        self.active_poll_interval
     }
 
     /// Get the current interpolated position in milliseconds.
@@ -313,6 +327,6 @@ impl LocalPlaybackTimer {
 
 impl Default for LocalPlaybackTimer {
     fn default() -> Self {
-        Self::new()
+        Self::new(60) // Default to 60fps
     }
 }
