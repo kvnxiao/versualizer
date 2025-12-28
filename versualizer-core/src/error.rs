@@ -53,7 +53,3 @@ pub enum CoreError {
 
 /// Convenience type alias for Results with `CoreError`.
 pub type Result<T> = std::result::Result<T, CoreError>;
-
-// Backwards compatibility alias - deprecated, will be removed in future version
-#[deprecated(since = "0.2.0", note = "Use CoreError instead")]
-pub type VersualizerError = CoreError;

@@ -32,7 +32,7 @@ fn main() {
     let config = match Config::load_or_create() {
         Ok(config) => config,
         Err(e) => {
-            eprintln!("{e}");
+            error!("{e}");
             std::process::exit(1);
         }
     };
@@ -41,7 +41,7 @@ fn main() {
     let runtime = match tokio::runtime::Runtime::new() {
         Ok(rt) => rt,
         Err(e) => {
-            eprintln!("Failed to create tokio runtime: {e}");
+            error!("Failed to create tokio runtime: {e}");
             std::process::exit(1);
         }
     };

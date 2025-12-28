@@ -37,14 +37,12 @@ rspotify = { version = "0.13", features = ["client-reqwest"] }
 
 # Error handling
 thiserror = "2"
-anyhow = "1"
 
 # Logging
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Utilities
-directories = "6"
 dirs = "6"
 async-trait = "0.1"
 chrono = { version = "0.4", features = ["serde"] }
@@ -54,14 +52,9 @@ open = "5"
 
 # Async channels for UI
 futures = "0.3"
-futures-channel = "0.3"
-futures-lite = "2"
 
 # Web server (for OAuth callback)
 axum = "0.8"
-
-# Global hotkeys
-global-hotkey = "0.6"
 
 # Shutdown handling
 tokio-util = { version = "0.7", features = ["rt"] }

@@ -18,7 +18,8 @@
       "Bash(ls:*)",
       "Bash(tree:*)",
       "Bash(cargo doc:*)",
-      "Bash(cargo tree:*)"
+      "Bash(cargo tree:*)",
+      "Bash(cargo +nightly clippy:*)"
     ]
   }
 }

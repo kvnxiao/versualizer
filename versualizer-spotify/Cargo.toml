@@ -19,9 +19,7 @@ reqwest-middleware = { workspace = true }
 reqwest-retry = { workspace = true }
 rspotify = { workspace = true }
 thiserror = { workspace = true }
-anyhow = { workspace = true }
 tracing = { workspace = true }
-directories = { workspace = true }
 dirs = { workspace = true }
 async-trait = { workspace = true }
 chrono = { workspace = true }

@@ -414,18 +414,23 @@ impl SpotifyOAuth {
 
     /// Display authorization prompt and open browser
     fn prompt_authorization(auth_url: &str, addr: SocketAddr, callback_path: &str) {
-        println!("\n╔════════════════════════════════════════════════════════════════╗");
-        println!("║                    Spotify Authorization                        ║");
-        println!("╠════════════════════════════════════════════════════════════════╣");
-        println!("║ Opening browser for authorization...                           ║");
-        println!("╚════════════════════════════════════════════════════════════════╝\n");
+        info!("");
+        info!("╔════════════════════════════════════════════════════════════════╗");
+        info!("║                    Spotify Authorization                        ║");
+        info!("╠════════════════════════════════════════════════════════════════╣");
+        info!("║ Opening browser for authorization...                           ║");
+        info!("╚════════════════════════════════════════════════════════════════╝");
+        info!("");
 
         if let Err(e) = open::that(auth_url) {
             warn!("Could not open browser automatically: {}", e);
-            println!("Please open this URL manually:\n{auth_url}\n");
+            info!("Please open this URL manually:\n{auth_url}");
         }
 
-        println!("Waiting for authorization callback on http://{addr}{callback_path}...\n");
+        info!(
+            "Waiting for authorization callback on http://{}{callback_path}...",
+            addr
+        );
     }
 
     /// Wait for OAuth callback with timeout

@@ -26,13 +26,6 @@ dioxus-motion = { version = "0.3", default-features = false, features = ["deskto
 # Async runtime
 tokio = { workspace = true }
 
-# Async channels and streams
-futures-channel = { workspace = true }
-futures-lite = { workspace = true }
-
-# Error handling
-anyhow = { workspace = true }
-
 # Logging
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
