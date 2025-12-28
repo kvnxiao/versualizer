@@ -9,6 +9,17 @@ readme.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
+[features]
+default = []
+# Informational features for downstream crates
+# These indicate which providers/sources are available
+provider-lrclib = []
+provider-spotify-lyrics = []
+source-spotify = []
+source-mpris = []
+source-windows-media = []
+source-youtube-music = []
+
 [dependencies]
 tokio = { workspace = true }
 serde = { workspace = true }

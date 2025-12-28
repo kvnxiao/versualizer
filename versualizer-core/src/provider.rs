@@ -1,6 +1,7 @@
 use crate::error::CoreError;
 use crate::lrc::LrcFile;
 use async_trait::async_trait;
+use std::collections::HashMap;
 
 /// Query parameters for fetching lyrics
 #[derive(Debug, Clone)]
@@ -13,8 +14,8 @@ pub struct LyricsQuery {
     pub album_name: Option<String>,
     /// Track duration in seconds (for matching)
     pub duration_secs: Option<u32>,
-    /// Spotify track ID (for Spotify lyrics provider)
-    pub spotify_track_id: Option<String>,
+    /// Provider-specific track IDs (key: provider name, value: track ID)
+    pub provider_ids: HashMap<String, String>,
 }
 
 impl LyricsQuery {
@@ -25,7 +26,7 @@ impl LyricsQuery {
             artist_name: artist_name.into(),
             album_name: None,
             duration_secs: None,
-            spotify_track_id: None,
+            provider_ids: HashMap::new(),
         }
     }
 
@@ -43,11 +44,23 @@ impl LyricsQuery {
         self
     }
 
-    /// Set Spotify track ID
+    /// Add a provider-specific track ID
     #[must_use]
-    pub fn with_spotify_id(mut self, id: impl Into<String>) -> Self {
-        self.spotify_track_id = Some(id.into());
+    pub fn with_provider_id(mut self, provider: impl Into<String>, id: impl Into<String>) -> Self {
+        self.provider_ids.insert(provider.into(), id.into());
         self
+    }
+
+    /// Get a provider-specific track ID
+    #[must_use]
+    pub fn provider_id(&self, provider: &str) -> Option<&str> {
+        self.provider_ids.get(provider).map(String::as_str)
+    }
+
+    /// Convenience method to get Spotify track ID
+    #[must_use]
+    pub fn spotify_track_id(&self) -> Option<&str> {
+        self.provider_id("spotify")
     }
 }
 

@@ -1,4 +1,6 @@
+use crate::source::MusicSource;
 use crate::time::DurationExt;
+use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 /// Current playback state from the music player
@@ -64,7 +66,9 @@ impl PlaybackState {
     #[must_use]
     pub fn track_changed(&self, other: &Self) -> bool {
         match (&self.track, &other.track) {
-            (Some(a), Some(b)) => a.id != b.id,
+            (Some(a), Some(b)) => {
+                a.source != b.source || a.source_track_id != b.source_track_id
+            }
             (None, None) => false,
             _ => true,
         }
@@ -96,11 +100,20 @@ impl PlaybackState {
     }
 }
 
+/// Provider-specific track identifiers.
+///
+/// Key is the provider name (e.g., "spotify", "youtube"), value is the ID.
+pub type ProviderTrackIds = HashMap<String, String>;
+
 /// Information about the currently playing track
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TrackInfo {
-    /// Unique track identifier (e.g., Spotify track URI)
-    pub id: String,
+    /// Music source this track came from
+    pub source: MusicSource,
+    /// Primary track ID from the source (source-specific format)
+    pub source_track_id: String,
+    /// Additional provider-specific IDs for lyrics lookup
+    pub provider_ids: ProviderTrackIds,
     /// Track name
     pub name: String,
     /// Artist name(s)
@@ -114,19 +127,29 @@ pub struct TrackInfo {
 impl TrackInfo {
     /// Create a new track info
     pub fn new(
-        id: impl Into<String>,
+        source: MusicSource,
+        source_track_id: impl Into<String>,
         name: impl Into<String>,
         artist: impl Into<String>,
         album: impl Into<String>,
         duration: Duration,
     ) -> Self {
         Self {
-            id: id.into(),
+            source,
+            source_track_id: source_track_id.into(),
+            provider_ids: HashMap::new(),
             name: name.into(),
             artist: artist.into(),
             album: album.into(),
             duration,
         }
+    }
+
+    /// Add a provider-specific track ID
+    #[must_use]
+    pub fn with_provider_id(mut self, provider: impl Into<String>, id: impl Into<String>) -> Self {
+        self.provider_ids.insert(provider.into(), id.into());
+        self
     }
 
     /// Get duration in seconds (for lyrics query).

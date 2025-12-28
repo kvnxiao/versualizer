@@ -138,7 +138,7 @@ impl SpotifyLyricsProvider {
             });
         }
 
-        query.spotify_track_id.as_ref().map_or_else(
+        query.spotify_track_id().map_or_else(
             || {
                 Err(CoreError::LyricsProviderFailed {
                     provider: self.name().to_string(),

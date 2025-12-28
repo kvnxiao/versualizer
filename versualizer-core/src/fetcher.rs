@@ -99,12 +99,16 @@ impl LyricsFetcher {
     async fn fetch_lyrics_for_track(&self, track: &TrackInfo) {
         let provider_names: Vec<_> = self.providers.iter().map(|p| p.name()).collect();
         info!(
-            "Fetching lyrics for: {} - {} (providers: {:?})",
-            track.artist, track.name, provider_names
+            "Fetching lyrics for: {} - {} (source: {}, providers: {:?})",
+            track.artist, track.name, track.source, provider_names
         );
 
-        // Check cache first
-        if let Ok(Some(cached)) = self.cache.get_by_provider_id("spotify", &track.id).await {
+        // Check cache first using source-specific ID
+        if let Ok(Some(cached)) = self
+            .cache
+            .get_by_provider_id(track.source.as_str(), &track.source_track_id)
+            .await
+        {
             info!("Using cached lyrics for {}", track.name);
             if let LyricsResult::Synced(lrc) = cached.to_lyrics_result() {
                 self.sync_engine.set_lyrics(lrc).await;
@@ -112,11 +116,16 @@ impl LyricsFetcher {
             }
         }
 
-        // Try providers in order
-        let query = LyricsQuery::new(&track.name, &track.artist)
+        // Build query with all provider IDs from track info
+        let mut query = LyricsQuery::new(&track.name, &track.artist)
             .with_album(&track.album)
             .with_duration(track.duration_secs())
-            .with_spotify_id(&track.id);
+            .with_provider_id(track.source.as_str(), &track.source_track_id);
+
+        // Copy additional provider IDs
+        for (provider, id) in &track.provider_ids {
+            query = query.with_provider_id(provider, id);
+        }
 
         for provider in &self.providers {
             info!("Trying provider: {}", provider.name());
@@ -142,8 +151,8 @@ impl LyricsFetcher {
                             if let Err(e) = self
                                 .cache
                                 .store(
-                                    "spotify", // provider (music source)
-                                    &track.id, // provider_track_id (clean ID without prefix)
+                                    track.source.as_str(), // music source
+                                    &track.source_track_id, // source-specific track ID
                                     &fetched.result,
                                     &metadata,
                                     provider.name(), // lyrics_provider (lrclib, spotify_lyrics, etc.)

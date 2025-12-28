@@ -14,11 +14,14 @@ use tracing::{error, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 use versualizer_core::config::LyricsProviderType;
 use versualizer_core::{
-    LyricsCache, LyricsFetcher, LyricsProvider, SyncEngine, SyncEvent, VersualizerConfig,
+    CoreError, LyricsCache, LyricsFetcher, LyricsProvider, MusicSource, SyncEngine, SyncEvent,
+    VersualizerConfig,
 };
 use versualizer_lyrics_lrclib::LrclibProvider;
 use versualizer_lyrics_spotify::SpotifyLyricsProvider;
-use versualizer_spotify_api::{SpotifyOAuth, SpotifyPoller};
+use versualizer_spotify_api::{
+    SpotifyOAuth, SpotifyPoller, SpotifyProviderConfig, SPOTIFY_CONFIG_TEMPLATE,
+};
 
 fn main() {
     // Initialize logging
@@ -32,13 +35,21 @@ fn main() {
         .init();
 
     // Load config or create template on first run
-    let config = match VersualizerConfig::load_or_create() {
+    // Pass provider templates to include in the generated config file
+    let provider_templates: &[&str] = &[SPOTIFY_CONFIG_TEMPLATE];
+    let config = match VersualizerConfig::load_or_create(Some(provider_templates)) {
         Ok(config) => config,
         Err(e) => {
             error!("{e}");
             std::process::exit(1);
         }
     };
+
+    // Validate provider-specific config based on music source
+    if let Err(e) = validate_provider_config(&config) {
+        error!("{e}");
+        std::process::exit(1);
+    }
 
     // Create tokio runtime for background tasks
     let runtime = match tokio::runtime::Runtime::new() {
@@ -153,6 +164,19 @@ fn app() -> Element {
     rsx! { App {} }
 }
 
+/// Validate provider-specific configuration based on selected music source
+fn validate_provider_config(config: &VersualizerConfig) -> Result<(), CoreError> {
+    if config.music.source == MusicSource::Spotify {
+        let spotify_config = SpotifyProviderConfig::from_providers(&config.providers)?
+            .ok_or_else(|| CoreError::ConfigMissingField {
+                field: "providers.spotify".into(),
+            })?;
+        spotify_config.validate()?;
+    }
+    // Future sources would have their own validation
+    Ok(())
+}
+
 fn create_providers(config: &VersualizerConfig) -> Vec<Box<dyn LyricsProvider>> {
     config
         .lyrics
@@ -170,28 +194,46 @@ fn create_providers(config: &VersualizerConfig) -> Vec<Box<dyn LyricsProvider>> 
                         }
                     }
                 }
-                LyricsProviderType::SpotifyLyrics => config.spotify.sp_dc.as_ref().map_or_else(
-                    || {
-                        info!("Skipping Spotify lyrics provider: sp_dc not configured");
-                        None
-                    },
-                    |sp_dc| {
-                        if sp_dc.is_empty() {
-                            info!("Skipping Spotify lyrics provider: sp_dc is empty");
+                LyricsProviderType::SpotifyLyrics => {
+                    // Access Spotify config from providers section
+                    let spotify_config =
+                        match SpotifyProviderConfig::from_providers(&config.providers) {
+                            Ok(Some(cfg)) => cfg,
+                            Ok(None) => {
+                                info!("Skipping Spotify lyrics provider: not configured");
+                                return None;
+                            }
+                            Err(e) => {
+                                error!("Failed to parse Spotify config: {}", e);
+                                return None;
+                            }
+                        };
+
+                    spotify_config.sp_dc.as_ref().map_or_else(
+                        || {
+                            info!("Skipping Spotify lyrics provider: sp_dc not configured");
                             None
-                        } else {
-                            info!("Initializing Spotify lyrics provider (sp_dc configured)");
-                            let secret_key_url = config.spotify.secret_key_url.clone();
-                            match SpotifyLyricsProvider::new(sp_dc, secret_key_url) {
-                                Ok(provider) => Some(Box::new(provider) as Box<dyn LyricsProvider>),
-                                Err(e) => {
-                                    error!("Failed to create Spotify lyrics provider: {}", e);
-                                    None
+                        },
+                        |sp_dc| {
+                            if sp_dc.is_empty() {
+                                info!("Skipping Spotify lyrics provider: sp_dc is empty");
+                                None
+                            } else {
+                                info!("Initializing Spotify lyrics provider (sp_dc configured)");
+                                let secret_key_url = spotify_config.secret_key_url.clone();
+                                match SpotifyLyricsProvider::new(sp_dc, secret_key_url) {
+                                    Ok(provider) => {
+                                        Some(Box::new(provider) as Box<dyn LyricsProvider>)
+                                    }
+                                    Err(e) => {
+                                        error!("Failed to create Spotify lyrics provider: {}", e);
+                                        None
+                                    }
                                 }
                             }
-                        }
-                    },
-                ),
+                        },
+                    )
+                }
             }
         })
         .collect()
@@ -205,10 +247,23 @@ async fn start_spotify_poller(
 ) {
     info!("Initializing Spotify Web API poller...");
 
+    // Get Spotify config from providers section
+    let spotify_config = match SpotifyProviderConfig::from_providers(&config.providers) {
+        Ok(Some(cfg)) => cfg,
+        Ok(None) => {
+            error!("Spotify provider not configured");
+            return;
+        }
+        Err(e) => {
+            error!("Failed to parse Spotify config: {}", e);
+            return;
+        }
+    };
+
     let oauth = match SpotifyOAuth::new(
-        &config.spotify.client_id,
-        &config.spotify.client_secret,
-        &config.spotify.oauth_redirect_uri,
+        &spotify_config.client_id,
+        &spotify_config.client_secret,
+        &spotify_config.oauth_redirect_uri,
     ) {
         Ok(oauth) => Arc::new(oauth),
         Err(e) => {
@@ -229,13 +284,13 @@ async fn start_spotify_poller(
     let poller = Arc::new(SpotifyPoller::new(
         oauth,
         sync_engine,
-        config.spotify.poll_interval_ms,
+        spotify_config.poll_interval_ms,
         Some(cancel_token),
     ));
 
     info!(
         "Starting Spotify poller (interval: {}ms)",
-        config.spotify.poll_interval_ms
+        spotify_config.poll_interval_ms
     );
     let handle = poller.start();
     let _ = handle.await;

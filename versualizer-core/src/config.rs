@@ -1,41 +1,71 @@
 use crate::error::{CoreError, Result};
+use crate::source::MusicSource;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
-/// Main configuration structure
+/// Main configuration structure (source-agnostic)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VersualizerConfig {
-    pub spotify: SpotifyConfig,
+    /// Music configuration (source selection)
+    pub music: MusicConfig,
+    /// Lyrics provider configuration
     pub lyrics: LyricsConfig,
+    /// UI configuration
     pub ui: UiConfig,
+    /// Provider-specific configurations (dynamic)
+    #[serde(default)]
+    pub providers: ProvidersConfig,
 }
 
+/// Music configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SpotifyConfig {
-    pub client_id: String,
-    pub client_secret: String,
-    #[serde(default = "default_redirect_uri")]
-    pub oauth_redirect_uri: String,
-    #[serde(default = "default_poll_interval")]
-    pub poll_interval_ms: u64,
-    /// Optional: For unofficial Spotify lyrics API (use at your own risk)
-    pub sp_dc: Option<String>,
-    /// Optional: URL for fetching Spotify TOTP secret keys (default provided)
-    #[serde(default = "default_secret_key_url")]
-    pub secret_key_url: Option<String>,
+pub struct MusicConfig {
+    /// The active music source
+    pub source: MusicSource,
 }
 
-fn default_redirect_uri() -> String {
-    "http://127.0.0.1:8888/callback".into()
+impl Default for MusicConfig {
+    fn default() -> Self {
+        Self {
+            source: MusicSource::Spotify,
+        }
+    }
 }
 
-const fn default_poll_interval() -> u64 {
-    1000
+/// Provider-specific configurations stored as dynamic TOML values.
+/// Each provider crate defines its own config structure and parses from this.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ProvidersConfig {
+    /// Map of provider name to provider-specific configuration
+    pub inner: HashMap<String, toml::Value>,
 }
 
-const fn default_secret_key_url() -> Option<String> {
-    None
+impl ProvidersConfig {
+    /// Get a provider's configuration as a typed struct.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the provider config cannot be deserialized into type `T`.
+    pub fn get<T: serde::de::DeserializeOwned>(&self, provider: &str) -> Result<Option<T>> {
+        self.inner.get(provider).map_or(Ok(None), |value| {
+            value
+                .clone()
+                .try_into()
+                .map(Some)
+                .map_err(|e: toml::de::Error| CoreError::ConfigInvalid {
+                    message: format!("Failed to parse {provider} config: {e}"),
+                })
+        })
+    }
+
+    /// Check if a provider configuration exists
+    #[must_use]
+    pub fn contains(&self, provider: &str) -> bool {
+        self.inner.contains_key(provider)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -176,12 +206,20 @@ impl VersualizerConfig {
         crate::paths::config_path()
     }
 
-    /// Load config from file or create template on first run
+    /// Load config from file or create template on first run.
+    ///
+    /// This method loads the core configuration. Provider-specific validation
+    /// should be done by the application after loading.
+    ///
+    /// # Arguments
+    ///
+    /// * `provider_templates` - Optional slice of provider config templates to append
+    ///   to the base config template when creating a new config file.
     ///
     /// # Errors
     ///
-    /// Returns an error if the config file cannot be read, parsed, or if required fields are missing.
-    pub fn load_or_create() -> Result<Self> {
+    /// Returns an error if the config file cannot be read or parsed.
+    pub fn load_or_create(provider_templates: Option<&[&str]>) -> Result<Self> {
         let config_path = Self::config_path();
 
         if !config_path.exists() {
@@ -190,26 +228,23 @@ impl VersualizerConfig {
                 fs::create_dir_all(parent)?;
             }
 
+            // Build template with provider sections
+            let mut template = CONFIG_TEMPLATE_BASE.to_string();
+            if let Some(templates) = provider_templates {
+                for provider_template in templates {
+                    template.push_str(provider_template);
+                }
+            }
+            template.push_str(CONFIG_TEMPLATE_UI);
+
             // Write template config
-            fs::write(&config_path, CONFIG_TEMPLATE)?;
+            fs::write(&config_path, template)?;
 
             return Err(CoreError::ConfigNotFound { path: config_path });
         }
 
         let content = fs::read_to_string(&config_path)?;
         let config: Self = toml::from_str(&content)?;
-
-        // Validate required fields
-        if config.spotify.client_id.is_empty() {
-            return Err(CoreError::ConfigMissingField {
-                field: "spotify.client_id".to_string(),
-            });
-        }
-        if config.spotify.client_secret.is_empty() {
-            return Err(CoreError::ConfigMissingField {
-                field: "spotify.client_secret".to_string(),
-            });
-        }
 
         // Clamp max_lines to valid range (1-3)
         let mut config = config;
@@ -219,26 +254,23 @@ impl VersualizerConfig {
     }
 }
 
-const CONFIG_TEMPLATE: &str = r#"# Versualizer Configuration
+/// Base config template (source-agnostic)
+const CONFIG_TEMPLATE_BASE: &str = r#"# Versualizer Configuration
 # ~/.config/versualizer/config.toml
 
-[spotify]
-# Required: Get these from https://developer.spotify.com/dashboard
-client_id = ""
-client_secret = ""
-oauth_redirect_uri = "http://127.0.0.1:8888/callback"
-poll_interval_ms = 1000
-# Optional: For unofficial Spotify lyrics API (use at your own risk - may violate TOS)
-# sp_dc = ""
-# Optional: URL for fetching TOTP secret keys (default provided)
-# secret_key_url = "https://github.com/xyloflake/spot-secrets-go/blob/main/secrets/secretDict.json?raw=true"
+[music]
+# Active music source: "spotify", "mpris", "windows_media", "youtube_music"
+source = "spotify"
 
 [lyrics]
-# Provider priority: "spotify_lyrics", "lrclib"
-# Providers are tried in order; first successful result wins
+# Provider priority: providers are tried in order
+# Available: "lrclib", "spotify_lyrics"
 providers = ["lrclib"]
 
-[ui.layout]
+"#;
+
+/// UI config template
+const CONFIG_TEMPLATE_UI: &str = r#"[ui.layout]
 # The number of song lines to display in the visualizer
 max_lines = 3
 # Scale factor for the current (highlighted) line being sung
@@ -250,7 +282,8 @@ upcoming_line_scale = 0.8
 # Animation framerate in frames per second
 framerate = 60
 transition_ms = 200
-# CSS easing function for transitions https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Values/easing-function
+# CSS easing function for transitions
+# https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Values/easing-function
 easing = "ease-in-out"
 
 [ui.window]
