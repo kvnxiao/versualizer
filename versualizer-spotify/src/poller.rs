@@ -17,16 +17,23 @@ pub struct SpotifyPoller {
 
 impl SpotifyPoller {
     /// Create a new Spotify poller
+    ///
+    /// # Arguments
+    /// * `oauth` - Spotify OAuth client
+    /// * `sync_engine` - Sync engine to update with playback state
+    /// * `poll_interval_ms` - Polling interval in milliseconds
+    /// * `cancel_token` - Optional external cancellation token for graceful shutdown
     pub fn new(
         oauth: Arc<SpotifyOAuth>,
         sync_engine: Arc<SyncEngine>,
         poll_interval_ms: u64,
+        cancel_token: Option<CancellationToken>,
     ) -> Self {
         Self {
             oauth,
             sync_engine,
             poll_interval: Duration::from_millis(poll_interval_ms),
-            cancel_token: CancellationToken::new(),
+            cancel_token: cancel_token.unwrap_or_default(),
         }
     }
 
@@ -187,16 +194,23 @@ pub struct LyricsFetcher {
 
 impl LyricsFetcher {
     /// Create a new lyrics fetcher
+    ///
+    /// # Arguments
+    /// * `sync_engine` - Sync engine to listen for track changes
+    /// * `cache` - Lyrics cache for storing fetched lyrics
+    /// * `providers` - List of lyrics providers to try in order
+    /// * `cancel_token` - Optional external cancellation token for graceful shutdown
     pub fn new(
         sync_engine: Arc<SyncEngine>,
         cache: Arc<versualizer_core::cache::LyricsCache>,
         providers: Vec<Box<dyn versualizer_core::LyricsProvider>>,
+        cancel_token: Option<CancellationToken>,
     ) -> Self {
         Self {
             sync_engine,
             cache,
             providers,
-            cancel_token: CancellationToken::new(),
+            cancel_token: cancel_token.unwrap_or_default(),
         }
     }
 

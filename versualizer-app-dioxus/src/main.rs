@@ -6,10 +6,10 @@ mod state;
 use crate::app::App;
 use crate::bridge::use_sync_engine_bridge;
 use crate::state::{KaraokeDisplayConfig, KaraokeState};
-use dioxus::desktop::tao::platform::windows::WindowBuilderExtWindows;
 use dioxus::desktop::{LogicalSize, WindowBuilder};
 use dioxus::prelude::*;
 use std::sync::Arc;
+use tokio_util::sync::CancellationToken;
 use tracing::{error, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 use versualizer_core::config::LyricsProviderType;
@@ -70,11 +70,32 @@ fn main() {
         provider_names
     );
 
-    // Create lyrics fetcher
-    let lyrics_fetcher = Arc::new(LyricsFetcher::new(sync_engine.clone(), cache, providers));
+    // Create shared cancellation token for graceful shutdown
+    let cancel_token = CancellationToken::new();
+
+    // Set up Ctrl+C handler to trigger graceful shutdown
+    let ctrlc_token = cancel_token.clone();
+    if let Err(e) = ctrlc::set_handler(move || {
+        info!("Received Ctrl+C, shutting down gracefully...");
+        ctrlc_token.cancel();
+    }) {
+        error!("Failed to set Ctrl+C handler: {}", e);
+    }
+
+    // Create lyrics fetcher with cancellation token
+    let lyrics_fetcher = Arc::new(LyricsFetcher::new(
+        sync_engine.clone(),
+        cache,
+        providers,
+        Some(cancel_token.clone()),
+    ));
 
     // Spawn background tasks
-    runtime.spawn(start_spotify_poller(config.clone(), sync_engine.clone()));
+    runtime.spawn(start_spotify_poller(
+        config.clone(),
+        sync_engine.clone(),
+        cancel_token.clone(),
+    ));
     runtime.spawn(start_lyrics_fetcher(lyrics_fetcher));
     runtime.spawn(log_sync_events(sync_engine.clone()));
 
@@ -115,11 +136,12 @@ fn main() {
     };
 
     // Launch Dioxus application
-    // Use with_context to inject SyncEngine and display config before launch
+    // Use with_context to inject SyncEngine, display config, and cancellation token before launch
     dioxus::LaunchBuilder::desktop()
         .with_cfg(dioxus_config)
         .with_context(sync_engine)
         .with_context(display_config)
+        .with_context(cancel_token)
         .launch(app);
 }
 
@@ -192,7 +214,11 @@ fn create_providers(config: &Config) -> Vec<Box<dyn LyricsProvider>> {
 }
 
 /// Start the Spotify poller to fetch playback state
-async fn start_spotify_poller(config: Config, sync_engine: Arc<SyncEngine>) {
+async fn start_spotify_poller(
+    config: Config,
+    sync_engine: Arc<SyncEngine>,
+    cancel_token: CancellationToken,
+) {
     info!("Initializing Spotify Web API poller...");
 
     let oauth = match SpotifyOAuth::new(
@@ -215,11 +241,12 @@ async fn start_spotify_poller(config: Config, sync_engine: Arc<SyncEngine>) {
 
     info!("Spotify authenticated successfully!");
 
-    // Create and start the poller
+    // Create and start the poller with cancellation token
     let poller = Arc::new(SpotifyPoller::new(
         oauth,
         sync_engine,
         config.spotify.poll_interval_ms,
+        Some(cancel_token),
     ));
 
     info!(

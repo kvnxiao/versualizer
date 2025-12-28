@@ -37,5 +37,9 @@ anyhow = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 
+# Shutdown handling
+tokio-util = { workspace = true }
+ctrlc = { workspace = true }
+
 [lints]
 workspace = true
