@@ -1,4 +1,5 @@
 use crate::components::KaraokeLine;
+use crate::window_state::WindowState;
 use dioxus::desktop::tao::event::{Event as WryEvent, WindowEvent};
 use dioxus::desktop::{use_window, use_wry_event_handler};
 use dioxus::prelude::*;
@@ -13,6 +14,8 @@ pub fn App() -> Element {
     let cancel_token: CancellationToken = use_context();
 
     // Handle window close event (triggered by X button)
+    // Save window position before closing
+    let window_for_close = window.clone();
     let cancel_token_for_wry = cancel_token.clone();
     use_wry_event_handler(move |event, _| {
         if let WryEvent::WindowEvent {
@@ -21,6 +24,16 @@ pub fn App() -> Element {
         } = event
         {
             info!("Window close requested, shutting down gracefully...");
+
+            // Save window position before closing
+            if let Ok(position) = window_for_close.outer_position() {
+                let state = WindowState {
+                    x: position.x,
+                    y: position.y,
+                };
+                state.save();
+            }
+
             cancel_token_for_wry.cancel();
         }
     });

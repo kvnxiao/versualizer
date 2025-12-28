@@ -36,5 +36,9 @@ tracing-subscriber = { workspace = true }
 tokio-util = { workspace = true }
 ctrlc = { workspace = true }
 
+# Serialization for window state persistence
+serde = { workspace = true }
+serde_json = { workspace = true }
+
 [lints]
 workspace = true

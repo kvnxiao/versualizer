@@ -18,7 +18,10 @@ pub use config::{
 pub use error::CoreError;
 pub use fetcher::LyricsFetcher;
 pub use lrc::{LrcFile, LrcLine, LrcMetadata, LrcWord};
-pub use paths::{CONFIG_DIR_NAME, CONFIG_FILE_NAME, LYRICS_CACHE_DB_FILE_NAME};
+pub use paths::{
+    window_state_path, CONFIG_DIR_NAME, CONFIG_FILE_NAME, LYRICS_CACHE_DB_FILE_NAME,
+    WINDOW_STATE_FILE_NAME,
+};
 pub use playback::{PlaybackState, TrackInfo};
 pub use provider::{FetchedLyrics, LyricsProvider, LyricsQuery, LyricsResult};
 pub use source::{MusicSource, MusicSourceProvider, MusicSourceProviderBuilder};

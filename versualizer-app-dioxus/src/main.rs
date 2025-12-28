@@ -2,10 +2,13 @@ mod app;
 mod bridge;
 mod components;
 mod state;
+mod window_state;
 
 use crate::app::App;
 use crate::bridge::use_sync_engine_bridge;
 use crate::state::KaraokeState;
+use crate::window_state::WindowState;
+use dioxus::desktop::tao::dpi::PhysicalPosition;
 use dioxus::desktop::{LogicalSize, WindowBuilder};
 use dioxus::prelude::*;
 use std::sync::Arc;
@@ -113,6 +116,9 @@ fn main() {
     runtime.spawn(start_lyrics_fetcher(lyrics_fetcher));
     runtime.spawn(log_sync_events(sync_engine.clone()));
 
+    // Load saved window position if available
+    let saved_position = WindowState::load();
+
     // Configure window
     let window = WindowBuilder::new()
         .with_title("Versualizer")
@@ -123,6 +129,14 @@ fn main() {
             f64::from(config.ui.window.width_px),
             f64::from(config.ui.window.height_px),
         ));
+
+    // Apply saved position if available
+    let window = if let Some(state) = saved_position {
+        info!("Restoring window position: ({}, {})", state.x, state.y);
+        window.with_position(PhysicalPosition::new(state.x, state.y))
+    } else {
+        window
+    };
 
     // Disable window shadow on Windows for true overlay effect
     #[cfg(target_os = "windows")]
