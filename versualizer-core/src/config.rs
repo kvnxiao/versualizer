@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 /// Main configuration structure
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Config {
+pub struct VersualizerConfig {
     pub spotify: SpotifyConfig,
     pub lyrics: LyricsConfig,
     pub ui: UiConfig,
@@ -73,6 +73,8 @@ pub struct LayoutConfig {
     pub max_lines: usize,
     #[serde(default = "default_current_line_scale")]
     pub current_line_scale: f32,
+    #[serde(default = "default_upcoming_line_scale")]
+    pub upcoming_line_scale: f32,
 }
 
 const fn default_max_lines() -> usize {
@@ -80,7 +82,11 @@ const fn default_max_lines() -> usize {
 }
 
 const fn default_current_line_scale() -> f32 {
-    1.2
+    1.0
+}
+
+const fn default_upcoming_line_scale() -> f32 {
+    0.8
 }
 
 impl Default for LayoutConfig {
@@ -88,16 +94,23 @@ impl Default for LayoutConfig {
         Self {
             max_lines: default_max_lines(),
             current_line_scale: default_current_line_scale(),
+            upcoming_line_scale: default_upcoming_line_scale(),
         }
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnimationConfig {
+    #[serde(default = "default_animation_framerate")]
+    pub framerate: u32,
     #[serde(default = "default_transition_ms")]
     pub transition_ms: u32,
     #[serde(default = "default_easing")]
     pub easing: String,
+}
+
+const fn default_animation_framerate() -> u32 {
+    60
 }
 
 const fn default_transition_ms() -> u32 {
@@ -105,12 +118,13 @@ const fn default_transition_ms() -> u32 {
 }
 
 fn default_easing() -> String {
-    "ease_in_out".to_string()
+    "ease-in-out".to_string()
 }
 
 impl Default for AnimationConfig {
     fn default() -> Self {
         Self {
+            framerate: default_animation_framerate(),
             transition_ms: default_transition_ms(),
             easing: default_easing(),
         }
@@ -142,7 +156,7 @@ impl Default for WindowConfig {
     }
 }
 
-impl Config {
+impl VersualizerConfig {
     /// Get the configuration directory path (~/.config/versualizer/)
     #[must_use]
     pub fn config_dir() -> PathBuf {
@@ -190,6 +204,10 @@ impl Config {
             });
         }
 
+        // Clamp max_lines to valid range (1-3)
+        let mut config = config;
+        config.ui.layout.max_lines = config.ui.layout.max_lines.clamp(1, 3);
+
         Ok(config)
     }
 }
@@ -212,12 +230,14 @@ poll_interval_ms = 1000
 providers = ["lrclib"]
 
 [ui.layout]
-max_lines = 3
-current_line_scale = 1.2
+max_lines = 3  # The number of song lines to display in the visualizer
+current_line_scale = 1.0  # Scale factor for the current (highlighted) line being sung
+upcoming_line_scale = 0.8  # Scale factor for upcoming lines to be sung
 
 [ui.animation]
+framerate = 60  # Animation framerate in frames per second
 transition_ms = 200
-easing = "ease_in_out"  # "linear", "ease_in", "ease_out", "ease_in_out"
+easing = "ease-in-out"  # CSS easing function for transitions https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Values/easing-function
 
 [ui.window]
 width = 800

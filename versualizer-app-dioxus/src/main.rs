@@ -5,7 +5,7 @@ mod state;
 
 use crate::app::App;
 use crate::bridge::use_sync_engine_bridge;
-use crate::state::{KaraokeDisplayConfig, KaraokeState};
+use crate::state::KaraokeState;
 use dioxus::desktop::{LogicalSize, WindowBuilder};
 use dioxus::prelude::*;
 use std::sync::Arc;
@@ -14,7 +14,7 @@ use tracing::{error, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 use versualizer_core::config::LyricsProviderType;
 use versualizer_core::providers::LrclibProvider;
-use versualizer_core::{Config, LyricsCache, LyricsProvider, SyncEngine, SyncEvent};
+use versualizer_core::{LyricsCache, LyricsProvider, SyncEngine, SyncEvent, VersualizerConfig};
 use versualizer_spotify::{LyricsFetcher, SpotifyLyricsProvider, SpotifyOAuth, SpotifyPoller};
 
 fn main() {
@@ -29,7 +29,7 @@ fn main() {
         .init();
 
     // Load config or create template on first run
-    let config = match Config::load_or_create() {
+    let config = match VersualizerConfig::load_or_create() {
         Ok(config) => config,
         Err(e) => {
             error!("{e}");
@@ -126,34 +126,14 @@ fn main() {
         .with_custom_head(custom_head)
         .with_disable_context_menu(true);
 
-    // Create display config from loaded config
-    let display_config = KaraokeDisplayConfig {
-        max_lines: config.ui.layout.max_lines.clamp(1, 3),
-        current_line_scale: config.ui.layout.current_line_scale,
-        upcoming_line_scale: 0.8,
-        transition_ms: config.ui.animation.transition_ms,
-        easing: convert_easing(&config.ui.animation.easing),
-    };
-
     // Launch Dioxus application
-    // Use with_context to inject SyncEngine, display config, and cancellation token before launch
+    // Use with_context to inject SyncEngine, UI config, and cancellation token before launch
     dioxus::LaunchBuilder::desktop()
         .with_cfg(dioxus_config)
         .with_context(sync_engine)
-        .with_context(display_config)
+        .with_context(config.ui)
         .with_context(cancel_token)
         .launch(app);
-}
-
-/// Convert config easing format to CSS easing function
-fn convert_easing(easing: &str) -> String {
-    match easing {
-        "linear" => "linear",
-        "ease_in" => "ease-in",
-        "ease_out" => "ease-out",
-        _ => "ease-in-out",
-    }
-    .into()
 }
 
 /// Root component that sets up context and renders the app
@@ -170,7 +150,7 @@ fn app() -> Element {
     rsx! { App {} }
 }
 
-fn create_providers(config: &Config) -> Vec<Box<dyn LyricsProvider>> {
+fn create_providers(config: &VersualizerConfig) -> Vec<Box<dyn LyricsProvider>> {
     config
         .lyrics
         .providers
@@ -215,7 +195,7 @@ fn create_providers(config: &Config) -> Vec<Box<dyn LyricsProvider>> {
 
 /// Start the Spotify poller to fetch playback state
 async fn start_spotify_poller(
-    config: Config,
+    config: VersualizerConfig,
     sync_engine: Arc<SyncEngine>,
     cancel_token: CancellationToken,
 ) {

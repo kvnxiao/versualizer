@@ -10,7 +10,7 @@ pub mod sync;
 pub mod time;
 
 pub use cache::LyricsCache;
-pub use config::Config;
+pub use config::{AnimationConfig, LayoutConfig, UiConfig, VersualizerConfig, WindowConfig};
 pub use error::CoreError;
 pub use lrc::{LrcFile, LrcLine, LrcMetadata, LrcWord};
 pub use paths::{CONFIG_DIR_NAME, CONFIG_FILE_NAME, LYRICS_CACHE_DB_FILE_NAME};

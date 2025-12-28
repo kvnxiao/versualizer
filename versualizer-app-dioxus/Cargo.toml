@@ -10,7 +10,7 @@ keywords.workspace = true
 categories.workspace = true
 
 [[bin]]
-name = "versualizer"
+name = "versualizer-dioxus"
 path = "src/main.rs"
 
 [dependencies]

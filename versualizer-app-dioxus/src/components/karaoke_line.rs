@@ -1,4 +1,5 @@
-use crate::state::{KaraokeDisplayConfig, KaraokeState, PrecomputedLyrics, INTRO_LINE_INDEX};
+use crate::state::{KaraokeState, PrecomputedLyrics, INTRO_LINE_INDEX};
+use versualizer_core::UiConfig;
 use dioxus::prelude::*;
 use dioxus_motion::prelude::*;
 
@@ -29,7 +30,7 @@ pub fn KaraokeLine(
     unsung_color: String,
 ) -> Element {
     let karaoke = use_context::<KaraokeState>();
-    let config = use_context::<KaraokeDisplayConfig>();
+    let config = use_context::<UiConfig>();
 
     // Read signals
     let is_playing = *karaoke.is_playing.read();
@@ -37,7 +38,7 @@ pub fn KaraokeLine(
     let lyrics = karaoke.lyrics.read();
 
     // Calculate how many lines to request (visible + buffer)
-    let visible_count = config.max_lines;
+    let visible_count = config.layout.max_lines;
     let lines_after = visible_count.saturating_sub(1) + BUFFER_LINES_AFTER;
 
     // Get visible lines with buffer
@@ -83,7 +84,7 @@ pub fn KaraokeLine(
         "--sung-color: {sung_color}; --unsung-color: {unsung_color}; \
          --transition-duration: {}ms; --transition-easing: {}; \
          height: {container_height}px;",
-        config.transition_ms, config.easing
+        config.animation.transition_ms, config.animation.easing
     );
 
     // Play state for CSS animation
@@ -170,10 +171,11 @@ pub fn KaraokeLine(
                         // Interpolate between current and upcoming scale using mul_add for accuracy
                         let t = distance_from_current.abs();
                         config
+                            .layout
                             .current_line_scale
-                            .mul_add(1.0 - t, config.upcoming_line_scale * t)
+                            .mul_add(1.0 - t, config.layout.upcoming_line_scale * t)
                     } else {
-                        config.upcoming_line_scale
+                        config.layout.upcoming_line_scale
                     };
 
                     // Calculate opacity based on position

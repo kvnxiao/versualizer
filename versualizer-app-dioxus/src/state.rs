@@ -3,34 +3,6 @@ use std::time::{Duration, Instant};
 use tracing::trace;
 use versualizer_core::LrcFile;
 
-/// UI display configuration for karaoke rendering.
-/// These values control line visibility, scaling, and animation timing.
-#[derive(Clone, Debug)]
-pub struct KaraokeDisplayConfig {
-    /// Number of visible lines (1-3), excluding buffer lines
-    pub max_lines: usize,
-    /// Scale factor for the current line (e.g., 1.0)
-    pub current_line_scale: f32,
-    /// Scale factor for upcoming/buffer lines (e.g., 0.8)
-    pub upcoming_line_scale: f32,
-    /// Transition duration in milliseconds
-    pub transition_ms: u32,
-    /// CSS easing function (e.g., "ease-in-out")
-    pub easing: String,
-}
-
-impl Default for KaraokeDisplayConfig {
-    fn default() -> Self {
-        Self {
-            max_lines: 3,
-            current_line_scale: 1.0,
-            upcoming_line_scale: 0.8,
-            transition_ms: 200,
-            easing: "ease-in-out".into(),
-        }
-    }
-}
-
 /// Convert u128 milliseconds to u64, saturating at `u64::MAX`.
 /// In practice, this is safe because song durations never exceed `u64::MAX` milliseconds
 /// (which would be ~584 million years).
