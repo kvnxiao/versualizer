@@ -9,7 +9,7 @@ pub const PROVIDER_NAME: &str = "spotify";
 
 /// Default URL for fetching Spotify TOTP secret keys
 pub const DEFAULT_SECRET_KEY_URL: &str =
-    "https://github.com/xyloflake/spot-secrets-go/blob/main/secrets/secretDict.json?raw=true";
+    "https://raw.githubusercontent.com/xyloflake/spot-secrets-go/refs/heads/main/secrets/secretDict.json";
 
 /// Spotify-specific configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
