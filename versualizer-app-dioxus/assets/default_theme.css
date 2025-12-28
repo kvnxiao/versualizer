@@ -36,7 +36,6 @@
   padding: 0;
   box-sizing: border-box;
   user-select: none;
-  pointer-events: none;
 }
 
 html, body {
@@ -64,6 +63,7 @@ html, body {
   position: relative;
   width: 100%;
   overflow: hidden;
+  pointer-events: none;
   /* Height is already set dynamically via inline style based on max_lines */
 }
 
