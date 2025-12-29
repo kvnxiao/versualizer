@@ -145,13 +145,13 @@ pub fn KaraokeLine() -> Element {
                     };
 
                     // Pass raw values to CSS - all transform/opacity calculations done in CSS
+                    let line_duration_ms = line.duration_ms;
                     let line_style = format!(
                         "--line-index: {line_absolute_idx}; \
                          --scroll-offset: {animated_offset}; \
                          --distance: {distance}; \
-                         --duration: {}ms; \
+                         --duration: {line_duration_ms}ms; \
                          --play-state: {play_state};",
-                        line.duration_ms
                     );
 
                     // Use absolute line index as key for stable DOM elements
