@@ -131,7 +131,28 @@ fn main() {
         .with_resizable(true)
         .with_maximizable(false)
         .with_always_on_top(true)
+        .with_closable(true)
+        .with_visible_on_all_workspaces(true)
         .with_inner_size(LogicalSize::new(900.0, 200.0));
+
+    // Disable window shadow on Windows for true overlay effect
+    #[cfg(target_os = "windows")]
+    let window = {
+        use dioxus::desktop::tao::platform::windows::WindowBuilderExtWindows;
+        window.with_undecorated_shadow(false)
+    };
+
+    #[cfg(target_os = "macos")]
+    let window = {
+        use dioxus::desktop::tao::platform::macos::WindowBuilderExtMacOS;
+        window
+            .with_movable_by_window_background(true)
+            .with_title_hidden(true)
+            .with_titlebar_hidden(true)
+            .with_titlebar_buttons_hidden(true)
+            .with_titlebar_transparent(true)
+            .with_has_shadow(false)
+    };
 
     // Apply saved position if available
     let window = if let Some(state) = saved_position {
@@ -139,13 +160,6 @@ fn main() {
         window.with_position(PhysicalPosition::new(state.x, state.y))
     } else {
         window
-    };
-
-    // Disable window shadow on Windows for true overlay effect
-    #[cfg(target_os = "windows")]
-    let window = {
-        use dioxus::desktop::tao::platform::windows::WindowBuilderExtWindows;
-        window.with_undecorated_shadow(false)
     };
 
     // CSS is now handled by the theme_watcher module in the App component
@@ -181,9 +195,11 @@ fn app() -> Element {
 /// Validate provider-specific configuration based on selected music source
 fn validate_provider_config(config: &VersualizerConfig) -> Result<(), CoreError> {
     if config.music.source == MusicSource::Spotify {
-        let spotify_config = SpotifyProviderConfig::from_providers(&config.providers)?
-            .ok_or_else(|| CoreError::ConfigMissingField {
-                field: "providers.spotify".into(),
+        let spotify_config =
+            SpotifyProviderConfig::from_providers(&config.providers)?.ok_or_else(|| {
+                CoreError::ConfigMissingField {
+                    field: "providers.spotify".into(),
+                }
             })?;
         spotify_config.validate()?;
     }
