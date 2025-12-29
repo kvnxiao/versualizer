@@ -8,3 +8,5 @@ default_platform = "desktop"
 [web.resource]
 
 [bundle]
+identifier = "com.versualizer.app"
+publisher = "Kevin Xiao"
