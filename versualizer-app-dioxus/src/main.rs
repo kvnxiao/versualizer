@@ -131,7 +131,7 @@ fn main() {
         .with_resizable(true)
         .with_maximizable(false)
         .with_always_on_top(true)
-        .with_inner_size(LogicalSize::new(800.0, 200.0));
+        .with_inner_size(LogicalSize::new(900.0, 200.0));
 
     // Apply saved position if available
     let window = if let Some(state) = saved_position {
