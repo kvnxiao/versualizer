@@ -179,10 +179,7 @@ mod tests {
         let query = LyricsQuery::new("Song", "Artist")
             .with_provider_id("spotify", "4uLU6hMCjMI75M1A2tKUQC");
 
-        assert_eq!(
-            query.spotify_track_id(),
-            Some("4uLU6hMCjMI75M1A2tKUQC")
-        );
+        assert_eq!(query.spotify_track_id(), Some("4uLU6hMCjMI75M1A2tKUQC"));
     }
 
     #[test]
@@ -223,10 +220,7 @@ mod tests {
         assert!(result.is_found());
         assert!(!result.is_synced());
         assert!(result.as_synced().is_none());
-        assert_eq!(
-            result.text(),
-            Some("Plain text lyrics\nLine 2".to_string())
-        );
+        assert_eq!(result.text(), Some("Plain text lyrics\nLine 2".to_string()));
     }
 
     #[test]

@@ -78,7 +78,11 @@ impl SpotifyLyricsProvider {
 
         // Create token manager with the base client
         let secret_url = secret_key_url.unwrap_or_else(|| DEFAULT_SECRET_KEY_URL.to_string());
-        let token_manager = Arc::new(SpotifyTokenManager::new(sp_dc, secret_url, base_client.clone()));
+        let token_manager = Arc::new(SpotifyTokenManager::new(
+            sp_dc,
+            secret_url,
+            base_client.clone(),
+        ));
 
         // Wrap with retry middleware (exponential backoff) for lyrics requests
         let retry_policy =
@@ -157,14 +161,12 @@ impl SpotifyLyricsProvider {
     /// Send request to Spotify lyrics API using Bearer token authentication.
     async fn send_request(&self, track_id: &str) -> Result<reqwest::Response, CoreError> {
         // Get valid access token (refreshes if needed)
-        let access_token = self
-            .token_manager
-            .get_access_token()
-            .await
-            .map_err(|e| CoreError::LyricsProviderFailed {
+        let access_token = self.token_manager.get_access_token().await.map_err(|e| {
+            CoreError::LyricsProviderFailed {
                 provider: self.name().to_string(),
                 reason: e.to_string(),
-            })?;
+            }
+        })?;
 
         let url = format!("{SPOTIFY_LYRICS_API}/{track_id}?format=json&market=from_token");
         info!("Spotify GET: {}", url);

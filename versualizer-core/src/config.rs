@@ -154,7 +154,6 @@ impl Default for AnimationConfig {
     }
 }
 
-
 impl VersualizerConfig {
     /// Get the configuration directory path (~/.config/versualizer/)
     #[must_use]
@@ -235,16 +234,24 @@ providers = ["lrclib"]
 const CONFIG_TEMPLATE_UI: &str = concatcp!(
     "[ui.layout]\n",
     "# The number of song lines to display in the visualizer\n",
-    "max_lines = ", DEFAULT_MAX_LINES, "\n",
+    "max_lines = ",
+    DEFAULT_MAX_LINES,
+    "\n",
     "\n",
     "[ui.animation]\n",
     "# Animation framerate in frames per second\n",
-    "framerate = ", DEFAULT_ANIMATION_FRAMERATE, "\n",
+    "framerate = ",
+    DEFAULT_ANIMATION_FRAMERATE,
+    "\n",
     "# Drift threshold in milliseconds. If local and server playback positions differ\n",
     "# by more than this amount, a hard sync is performed. Lower values = more syncs\n",
     "# but potential visual jumps. Higher values = fewer syncs but may drift.\n",
-    "# Default ", DEFAULT_DRIFT_THRESHOLD_MS, "ms tolerates ~2-3 poll intervals while keeping lyrics visually in sync.\n",
-    "drift_threshold_ms = ", DEFAULT_DRIFT_THRESHOLD_MS, "\n",
+    "# Default ",
+    DEFAULT_DRIFT_THRESHOLD_MS,
+    "ms tolerates ~2-3 poll intervals while keeping lyrics visually in sync.\n",
+    "drift_threshold_ms = ",
+    DEFAULT_DRIFT_THRESHOLD_MS,
+    "\n",
 );
 
 #[cfg(test)]
@@ -320,7 +327,10 @@ providers = ["lrclib", "spotify_lyrics"]
 
         let config: VersualizerConfig = toml::from_str(config_str).unwrap();
         assert_eq!(config.lyrics.providers[0], LyricsProviderType::Lrclib);
-        assert_eq!(config.lyrics.providers[1], LyricsProviderType::SpotifyLyrics);
+        assert_eq!(
+            config.lyrics.providers[1],
+            LyricsProviderType::SpotifyLyrics
+        );
     }
 
     #[test]
@@ -347,7 +357,10 @@ drift_threshold_ms = 500
         assert_eq!(config.music.source, MusicSource::Spotify);
         assert_eq!(config.lyrics.providers.len(), 2);
         assert_eq!(config.lyrics.providers[0], LyricsProviderType::Lrclib);
-        assert_eq!(config.lyrics.providers[1], LyricsProviderType::SpotifyLyrics);
+        assert_eq!(
+            config.lyrics.providers[1],
+            LyricsProviderType::SpotifyLyrics
+        );
         assert_eq!(config.ui.layout.max_lines, 2);
         assert_eq!(config.ui.animation.framerate, 30);
         assert_eq!(config.ui.animation.drift_threshold_ms, 500);

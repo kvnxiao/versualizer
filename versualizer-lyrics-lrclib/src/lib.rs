@@ -4,7 +4,9 @@ use reqwest_retry::{policies::ExponentialBackoff, RetryTransientMiddleware};
 use serde::Deserialize;
 use std::time::Duration;
 use tracing::{debug, info, warn};
-use versualizer_core::{CoreError, FetchedLyrics, LrcFile, LyricsProvider, LyricsQuery, LyricsResult};
+use versualizer_core::{
+    CoreError, FetchedLyrics, LrcFile, LyricsProvider, LyricsQuery, LyricsResult,
+};
 
 const LRCLIB_API_URL: &str = "https://lrclib.net/api";
 
@@ -25,7 +27,9 @@ fn duration_score(actual: Option<f64>, expected: Option<u32>, scale: f64) -> i32
             // Note: Rust stable doesn't have f64::to_int_saturating(), so we use clamp + cast.
             // The FloatToInt trait exists but is unstable (nightly-only).
             #[allow(clippy::cast_possible_truncation)]
-            { diff.clamp(0.0, f64::from(i32::MAX)) as i32 }
+            {
+                diff.clamp(0.0, f64::from(i32::MAX)) as i32
+            }
         }
         _ => 50, // Default score when duration is unknown
     }

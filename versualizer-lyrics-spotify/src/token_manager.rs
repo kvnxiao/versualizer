@@ -57,7 +57,11 @@ impl SpotifyTokenManager {
     /// * `secret_key_url` - URL to fetch the secret key dictionary from
     /// * `client` - HTTP client for making requests
     #[must_use]
-    pub fn new(sp_dc: impl Into<String>, secret_key_url: impl Into<String>, client: reqwest::Client) -> Self {
+    pub fn new(
+        sp_dc: impl Into<String>,
+        secret_key_url: impl Into<String>,
+        client: reqwest::Client,
+    ) -> Self {
         Self {
             sp_dc: sp_dc.into(),
             secret_key_url: secret_key_url.into(),

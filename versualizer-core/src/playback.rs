@@ -66,9 +66,7 @@ impl PlaybackState {
     #[must_use]
     pub fn track_changed(&self, other: &Self) -> bool {
         match (&self.track, &other.track) {
-            (Some(a), Some(b)) => {
-                a.source != b.source || a.source_track_id != b.source_track_id
-            }
+            (Some(a), Some(b)) => a.source != b.source || a.source_track_id != b.source_track_id,
             (None, None) => false,
             _ => true,
         }
@@ -240,8 +238,18 @@ mod tests {
             Duration::from_secs(180),
         );
 
-        let state1 = PlaybackState::new(true, Some(track.clone()), Duration::ZERO, Duration::from_secs(180));
-        let state2 = PlaybackState::new(true, Some(track), Duration::from_secs(30), Duration::from_secs(180));
+        let state1 = PlaybackState::new(
+            true,
+            Some(track.clone()),
+            Duration::ZERO,
+            Duration::from_secs(180),
+        );
+        let state2 = PlaybackState::new(
+            true,
+            Some(track),
+            Duration::from_secs(30),
+            Duration::from_secs(180),
+        );
 
         assert!(!state1.track_changed(&state2));
     }
@@ -266,8 +274,10 @@ mod tests {
             Duration::from_secs(200),
         );
 
-        let state1 = PlaybackState::new(true, Some(track1), Duration::ZERO, Duration::from_secs(180));
-        let state2 = PlaybackState::new(true, Some(track2), Duration::ZERO, Duration::from_secs(200));
+        let state1 =
+            PlaybackState::new(true, Some(track1), Duration::ZERO, Duration::from_secs(180));
+        let state2 =
+            PlaybackState::new(true, Some(track2), Duration::ZERO, Duration::from_secs(200));
 
         assert!(state1.track_changed(&state2));
     }
@@ -284,7 +294,8 @@ mod tests {
         );
 
         let state1 = PlaybackState::default();
-        let state2 = PlaybackState::new(true, Some(track), Duration::ZERO, Duration::from_secs(180));
+        let state2 =
+            PlaybackState::new(true, Some(track), Duration::ZERO, Duration::from_secs(180));
 
         assert!(state1.track_changed(&state2));
     }
@@ -345,8 +356,14 @@ mod tests {
         .with_provider_id("spotify", "spotify_track_id")
         .with_provider_id("lrclib", "lrclib_id");
 
-        assert_eq!(track.provider_ids.get("spotify"), Some(&"spotify_track_id".to_string()));
-        assert_eq!(track.provider_ids.get("lrclib"), Some(&"lrclib_id".to_string()));
+        assert_eq!(
+            track.provider_ids.get("spotify"),
+            Some(&"spotify_track_id".to_string())
+        );
+        assert_eq!(
+            track.provider_ids.get("lrclib"),
+            Some(&"lrclib_id".to_string())
+        );
     }
 
     #[test]

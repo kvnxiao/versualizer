@@ -102,6 +102,9 @@ mod tests {
         let code1 = generate_totp(secret, 1_700_000_000).expect("TOTP generation should succeed");
         let code2 = generate_totp(secret, 1_700_000_030).expect("TOTP generation should succeed");
 
-        assert_ne!(code1, code2, "Different periods should produce different codes");
+        assert_ne!(
+            code1, code2,
+            "Different periods should produce different codes"
+        );
     }
 }

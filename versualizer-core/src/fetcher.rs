@@ -151,7 +151,7 @@ impl LyricsFetcher {
                             if let Err(e) = self
                                 .cache
                                 .store(
-                                    track.source.as_str(), // music source
+                                    track.source.as_str(),  // music source
                                     &track.source_track_id, // source-specific track ID
                                     &fetched.result,
                                     &metadata,
