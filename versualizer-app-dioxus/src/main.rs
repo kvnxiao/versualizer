@@ -190,7 +190,10 @@ fn app() -> Element {
     // Bridge SyncEngine events to Dioxus signals
     use_sync_engine_bridge(&sync_engine, karaoke);
 
-    rsx! { App {} }
+    rsx! {
+       document::Link { rel: "icon", href: asset!("/icons/icon.ico") },
+       App {}
+    }
 }
 
 /// Validate provider-specific configuration based on selected music source
