@@ -18,15 +18,15 @@ A cross-platform desktop lyrics visualizer with karaoke-style synchronized lyric
 
 ### From Source
 
-Requires [Rust 1.75+](https://rustup.rs/).
+Requires [Rust 1.75+](https://rustup.rs/) and [`dioxus-cli`](https://dioxuslabs.com/learn/0.7/getting_started/#install-the-dioxus-cli) installed.
 
 ```bash
 git clone https://github.com/kvnxiao/versualizer
 cd versualizer
-cargo install --path ./versualizer-app-dioxus
+cd versualizer-app-dioxus && dx bundle --features bundle
 ```
 
-The binary will be installed to your cargo bin folder (e.g. `~/.cargo/bin/`).
+Find the executable based on the output of the bundler and either run the executable or use the install it generated.
 
 ## Setup with Spotify
 
