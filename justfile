@@ -10,3 +10,6 @@ dev:
 
 test:
     cargo test --workspace
+
+bundle:
+    cd versualizer-app-dioxus && dx bundle
