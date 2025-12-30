@@ -47,10 +47,6 @@ pub fn App() -> Element {
         }
     });
 
-    // Handle mouse down to start window drag (for borderless window)
-    #[cfg(not(target_os = "macos"))]
-    let window_for_drag = window.clone();
-
     // Poll for Ctrl+C signal and close window when received
     use_future(move || {
         let cancel_token = cancel_token.clone();
@@ -63,12 +59,24 @@ pub fn App() -> Element {
         }
     });
 
+    #[cfg(target_os = "macos")]
+    return rsx! {
+        // Dynamic style element - re-renders when css_content signal changes
+        style { dangerous_inner_html: "{css_content}" }
+
+        div {
+            class: "app",
+
+            KaraokeLine {}
+        }
+    };
+
     #[cfg(not(target_os = "macos"))]
     {
+        let window_for_drag = window.clone();
         let on_mouse_down = move |_: MouseEvent| {
             let _ = window_for_drag.drag_window();
         };
-
         return rsx! {
             // Dynamic style element - re-renders when css_content signal changes
             style { dangerous_inner_html: "{css_content}" }
@@ -80,16 +88,5 @@ pub fn App() -> Element {
                 KaraokeLine {}
             }
         };
-    }
-
-    rsx! {
-        // Dynamic style element - re-renders when css_content signal changes
-        style { dangerous_inner_html: "{css_content}" }
-
-        div {
-            class: "app",
-
-            KaraokeLine {}
-        }
     }
 }
