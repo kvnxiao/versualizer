@@ -29,6 +29,7 @@ use versualizer_spotify_api::{
     SpotifyOAuth, SpotifyPoller, SpotifyProviderConfig, SPOTIFY_CONFIG_TEMPLATE,
 };
 
+#[allow(clippy::too_many_lines)]
 fn main() {
     // Initialize logging
     // Filter out noisy rspotify HTTP request logs

@@ -438,6 +438,7 @@ fn apply_offset(duration: Duration, offset_ms: i64) -> Duration {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::float_cmp)]
 mod tests {
     use super::*;
 
@@ -452,11 +453,11 @@ mod tests {
 
     #[test]
     fn test_parse_multiple_lines() {
-        let input = r#"
+        let input = r"
 [00:05.00]First line
 [00:10.00]Second line
 [00:15.00]Third line
-"#;
+";
         let result = LrcFile::parse(input).unwrap();
         assert_eq!(result.lines.len(), 3);
         assert_eq!(result.lines[0].text, "First line");
@@ -466,12 +467,12 @@ mod tests {
 
     #[test]
     fn test_parse_id_tags() {
-        let input = r#"
+        let input = r"
 [ti:Song Title]
 [ar:Artist Name]
 [al:Album Name]
 [00:05.00]Lyrics here
-"#;
+";
         let result = LrcFile::parse(input).unwrap();
         assert_eq!(result.metadata.title, Some("Song Title".to_string()));
         assert_eq!(result.metadata.artist, Some("Artist Name".to_string()));
@@ -480,10 +481,10 @@ mod tests {
 
     #[test]
     fn test_parse_offset() {
-        let input = r#"
+        let input = r"
 [offset:500]
 [00:10.00]Test
-"#;
+";
         let result = LrcFile::parse(input).unwrap();
         // 10.00s + 0.5s offset = 10.5s
         assert_eq!(result.lines[0].start_time, Duration::from_millis(10500));
@@ -491,10 +492,10 @@ mod tests {
 
     #[test]
     fn test_parse_negative_offset() {
-        let input = r#"
+        let input = r"
 [offset:-500]
 [00:10.00]Test
-"#;
+";
         let result = LrcFile::parse(input).unwrap();
         // 10.00s - 0.5s offset = 9.5s
         assert_eq!(result.lines[0].start_time, Duration::from_millis(9500));
@@ -531,11 +532,11 @@ mod tests {
 
     #[test]
     fn test_current_line() {
-        let input = r#"
+        let input = r"
 [00:05.00]First
 [00:10.00]Second
 [00:15.00]Third
-"#;
+";
         let lrc = LrcFile::parse(input).unwrap();
 
         assert!(lrc.current_line(Duration::from_secs(0)).is_none());
@@ -582,25 +583,25 @@ mod tests {
 
     #[test]
     fn test_empty_lines_ignored() {
-        let input = r#"
+        let input = r"
 [00:05.00]First
 
 [00:10.00]Second
 
-"#;
+";
         let result = LrcFile::parse(input).unwrap();
         assert_eq!(result.lines.len(), 2);
     }
 
     #[test]
     fn test_visible_lines() {
-        let input = r#"
+        let input = r"
 [00:05.00]Line 1
 [00:10.00]Line 2
 [00:15.00]Line 3
 [00:20.00]Line 4
 [00:25.00]Line 5
-"#;
+";
         let lrc = LrcFile::parse(input).unwrap();
 
         let visible = lrc.visible_lines(Duration::from_secs(12), 1, 1);
@@ -693,11 +694,11 @@ mod tests {
 
     #[test]
     fn test_current_line_index() {
-        let input = r#"
+        let input = r"
 [00:05.00]First
 [00:10.00]Second
 [00:15.00]Third
-"#;
+";
         let lrc = LrcFile::parse(input).unwrap();
 
         assert!(lrc.current_line_index(Duration::from_secs(0)).is_none());
@@ -708,11 +709,11 @@ mod tests {
 
     #[test]
     fn test_visible_lines_at_start() {
-        let input = r#"
+        let input = r"
 [00:05.00]Line 1
 [00:10.00]Line 2
 [00:15.00]Line 3
-"#;
+";
         let lrc = LrcFile::parse(input).unwrap();
 
         // Before any lines start
@@ -723,11 +724,11 @@ mod tests {
 
     #[test]
     fn test_visible_lines_at_end() {
-        let input = r#"
+        let input = r"
 [00:05.00]Line 1
 [00:10.00]Line 2
 [00:15.00]Line 3
-"#;
+";
         let lrc = LrcFile::parse(input).unwrap();
 
         // At the last line
@@ -768,20 +769,20 @@ mod tests {
 
     #[test]
     fn test_parse_lrc_with_author_tag() {
-        let input = r#"
+        let input = r"
 [au:Lyrics Author]
 [00:05.00]Test lyrics
-"#;
+";
         let result = LrcFile::parse(input).unwrap();
         assert_eq!(result.metadata.author, Some("Lyrics Author".to_string()));
     }
 
     #[test]
     fn test_parse_lrc_with_length_tag() {
-        let input = r#"
+        let input = r"
 [length:03:30]
 [00:05.00]Test lyrics
-"#;
+";
         let result = LrcFile::parse(input).unwrap();
         assert_eq!(result.metadata.length, Some(Duration::from_secs(210)));
     }
@@ -789,11 +790,11 @@ mod tests {
     #[test]
     fn test_parse_lrc_lines_sorted() {
         // Lines out of order should be sorted by start time
-        let input = r#"
+        let input = r"
 [00:15.00]Third
 [00:05.00]First
 [00:10.00]Second
-"#;
+";
         let result = LrcFile::parse(input).unwrap();
         assert_eq!(result.lines[0].text, "First");
         assert_eq!(result.lines[1].text, "Second");

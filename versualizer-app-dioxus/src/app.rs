@@ -47,11 +47,14 @@ pub fn App() -> Element {
         }
     });
 
+    // Handle mouse down to start window drag (for borderless window)
+    #[cfg(not(target_os = "macos"))]
+    let window_for_drag = window.clone();
+
     // Poll for Ctrl+C signal and close window when received
-    let window_for_ctrlc = window.clone();
     use_future(move || {
         let cancel_token = cancel_token.clone();
-        let window = window_for_ctrlc.clone();
+        let window = window.clone();
         async move {
             // Wait for cancellation (triggered by Ctrl+C handler in main.rs)
             cancel_token.cancelled().await;
@@ -60,11 +63,10 @@ pub fn App() -> Element {
         }
     });
 
-    // Handle mouse down to start window drag (for borderless window)
     #[cfg(not(target_os = "macos"))]
     {
         let on_mouse_down = move |_: MouseEvent| {
-            let _ = window.drag_window();
+            let _ = window_for_drag.drag_window();
         };
 
         return rsx! {

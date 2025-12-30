@@ -460,6 +460,7 @@ fn format_timestamp(duration: std::time::Duration) -> String {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
     use crate::lrc::{LrcLine, LrcMetadata, LrcWord};
@@ -624,7 +625,7 @@ mod tests {
             artist: "Artist".to_string(),
             track: "Track".to_string(),
             album: Some("Album".to_string()),
-            duration_ms: Some(180000),
+            duration_ms: Some(180_000),
             provider: "lrclib".to_string(),
             provider_id: "123".to_string(),
             lyrics_type: LyricsType::Synced,
