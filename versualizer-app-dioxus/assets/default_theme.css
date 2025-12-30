@@ -1,0 +1,155 @@
+/**
+ * Modify this file to customize the appearance of the karaoke visualizer in real-time
+ * without restarting the app. The CSS variables below are in use in the default theme
+ * for convenience. Feel free to completely overhaul the styling as desired, as long as
+ * the necessary class names are used.
+ *
+ * https://developer.mozilla.org/en-US/docs/Learn_web_development/Core/Styling_basics/Values_and_units
+ * for more information on valid CSS units like rem, em, px.
+ *
+ * https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Values/color_value
+ * for more information on valid CSS color values.
+ */
+:root {
+  /* Color for text that has been sung (the "fill" color) */
+  --current-sung-color: #00FF00;
+  /* Color for current line's unsung text (the text being revealed by the fill) */
+  --current-unsung-color: #FFFFFF;
+  /* Text shadow for all text lines */
+  --current-text-shadow: 1px 1px 3px rgb(255, 192, 203);
+  /* Text shadow for upcoming (unsung) lines */
+  --unsung-text-shadow: 1px 1px 3px rgb(255, 192, 203);
+  /* Color for upcoming lines (use rgba for opacity) */
+  --unsung-color: rgba(255, 255, 255, 0.4);
+  /* Background color of the container */
+  --background-color: rgba(0, 0, 0, 0.5);
+  /* Base font size - affects all text sizing */
+  --base-font-rem-size: 32px;
+  /* Line height multiplier (on each line of text) */
+  --base-line-height: 1.5;
+  /* Font family - for lyrics in non-English languages ensure that appropriate fonts are specified here with fallbacks */
+  --font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+  /* Gap between lines */
+  --line-gap: 0.25rem;
+  /* Calculated line slot height: font-size * line-height + gap */
+  --line-slot-height: calc(var(--base-font-rem-size) * var(--base-line-height) + var(--line-gap));
+  /* Scale for current line */
+  --current-line-scale: 1.0;
+  /* Scale for upcoming lines */
+  --upcoming-line-scale: 0.8;
+  /* Optional: Override maximum number of lines visible (uncomment to use) */
+  /* --max-lines: 3; */
+  /* Optional: Override automatic window sizing (uncomment to use) */
+  /* Window dimensions are automatically calculated from .lines element size */
+  /* --window-width: 800px; */
+  /* --window-height: 200px; */
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  user-select: none;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  font-size: var(--base-font-rem-size);
+  line-height: var(--base-line-height);
+  font-family: var(--font-family);
+  overflow: hidden;
+}
+
+.app {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--background-color);
+  border-radius: 1rem;
+}
+
+/* Container for karaoke lines - clips overflow for buffer lines */
+.lines {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  pointer-events: none;
+  height: calc(var(--line-slot-height) * var(--max-lines));
+}
+
+/* Individual line with transform-based positioning and scaling */
+/* Rust passes: --line-index, --scroll-offset, --distance (from current line) */
+.karaoke-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  white-space: nowrap;
+  font-size: var(--base-font-rem-size);
+  line-height: var(--base-line-height);
+  transform-origin: center center;
+
+  /* Compute translateY from line index and scroll offset */
+  --y-offset: calc((var(--line-index) - var(--scroll-offset)) * var(--line-slot-height));
+
+  /* Compute scale: interpolate between current and upcoming based on distance */
+  /* clamp abs(distance) to [0, 1], then lerp: current*(1-t) + upcoming*t */
+  --abs-distance: max(var(--distance), calc(-1 * var(--distance)));
+  --t: clamp(var(--abs-distance), 0, 1);
+  --scale: calc(var(--current-line-scale) * (1 - var(--t)) + var(--upcoming-line-scale) * var(--t));
+
+  /* Compute opacity: fade in/out for buffer zones */
+  /* Above current (distance < 0): opacity = 1 + distance, clamped to [0, 1] */
+  /* Below visible (distance >= max_lines): opacity = 1 - (distance - max_lines + 1), clamped */
+  /* Visible area: full opacity */
+  --opacity: clamp(0, calc(1 + var(--distance)), 1);
+
+  transform: translateY(var(--y-offset)) scale(var(--scale));
+  opacity: var(--opacity);
+}
+
+/* Wrapper for current line text (enables animation restart via key) */
+.current-line-wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+/* Karaoke text animation */
+@keyframes karaoke-fill {
+  from { clip-path: inset(0 100% 0 0); }
+  to { clip-path: inset(0 0 0 0); }
+}
+
+/* Unsung text for current line (background layer) */
+.current-line-unsung {
+  color: var(--current-unsung-color);
+  text-shadow: var(--current-text-shadow);
+}
+
+/* Sung text for current line (foreground layer with fill animation) */
+.current-line-sung {
+  position: absolute;
+  left: 0;
+  top: 0;
+  white-space: nowrap;
+  color: var(--current-sung-color);
+  clip-path: inset(0 100% 0 0);
+  animation: karaoke-fill var(--duration, 5s) linear forwards;
+  animation-play-state: var(--play-state, running);
+  /* Negative animation-delay starts the animation partway through (for seek support) */
+  animation-delay: var(--animation-delay, 0ms);
+}
+
+/* Upcoming line text (no animation) */
+.upcoming-line {
+  color: var(--unsung-color);
+  text-shadow: var(--unsung-text-shadow);
+}

@@ -1,0 +1,54 @@
+[package]
+name = "versualizer-app-dioxus"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[[bin]]
+name = "versualizer-dioxus"
+path = "src/main.rs"
+
+[dependencies]
+versualizer-core = { path = "../versualizer-core" }
+versualizer-lyrics-lrclib = { path = "../versualizer-lyrics-lrclib" }
+versualizer-lyrics-spotify = { path = "../versualizer-lyrics-spotify" }
+versualizer-spotify-api = { path = "../versualizer-spotify-api" }
+
+# Dioxus desktop
+dioxus = { version = "0.7", features = ["desktop"] }
+
+# Dioxus animations
+dioxus-motion = { version = "0.3", default-features = false, features = ["desktop"] }
+
+# Async runtime
+tokio = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# Shutdown handling
+tokio-util = { workspace = true }
+ctrlc = { workspace = true }
+
+# Serialization for window state persistence
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# File watching for theme hot-reload
+notify = { workspace = true }
+notify-debouncer-mini = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+
+[lints]
+workspace = true
+
+[features]
+bundle = []

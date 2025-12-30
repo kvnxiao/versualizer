@@ -1,0 +1,45 @@
+[package]
+name = "versualizer-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[features]
+default = []
+# Informational features for downstream crates
+# These indicate which providers/sources are available
+provider-lrclib = []
+provider-spotify-lyrics = []
+source-spotify = []
+source-mpris = []
+source-windows-media = []
+source-youtube-music = []
+
+[dependencies]
+const_format = "0.2"
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+toml = { workspace = true }
+reqwest = { workspace = true }
+reqwest-middleware = { workspace = true }
+reqwest-retry = { workspace = true }
+tokio-rusqlite = { workspace = true }
+rusqlite = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+dirs = { workspace = true }
+async-trait = { workspace = true }
+chrono = { workspace = true }
+tokio-util = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
+
+[lints]
+workspace = true

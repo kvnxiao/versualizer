@@ -1,0 +1,30 @@
+[package]
+name = "versualizer-lyrics-spotify"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Spotify unofficial lyrics provider for Versualizer"
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+versualizer-core = { path = "../versualizer-core" }
+versualizer-spotify-api = { path = "../versualizer-spotify-api" }
+
+async-trait = { workspace = true }
+reqwest = { workspace = true }
+reqwest-middleware = { workspace = true }
+reqwest-retry = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+
+# TOTP authentication
+hmac = "0.12"
+sha1 = "0.10"
+
+[lints]
+workspace = true

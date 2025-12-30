@@ -1,0 +1,10 @@
+[application]
+name = "versualizer"
+default_platform = "desktop"
+
+[desktop]
+# Window settings are configured in Rust code
+
+[bundle]
+identifier = "com.versualizer.app"
+publisher = "Kevin Xiao"

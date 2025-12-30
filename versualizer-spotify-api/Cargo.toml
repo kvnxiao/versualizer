@@ -1,0 +1,31 @@
+[package]
+name = "versualizer-spotify-api"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Spotify Web API wrapper for Versualizer"
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+versualizer-core = { path = "../versualizer-core" }
+const_format = "0.2"
+async-trait = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+rspotify = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+dirs = { workspace = true }
+chrono = { workspace = true }
+tokio-util = { workspace = true }
+url = { workspace = true }
+open = { workspace = true }
+axum = { workspace = true }
+futures = { workspace = true }
+
+[lints]
+workspace = true

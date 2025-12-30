@@ -1,6 +1,87 @@
-[package]
-name = "versualizer"
-version = "0.1.0"
-edition = "2024"
+[workspace]
+resolver = "2"
+members = [
+    "versualizer-core",
+    "versualizer-lyrics-lrclib",
+    "versualizer-lyrics-spotify",
+    "versualizer-spotify-api",
+    "versualizer-app-dioxus",
+]
 
-[dependencies]
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+license = "MIT"
+authors = ["Kevin Xiao"]
+description = "Real-time synchronized lyrics visualizer for Spotify"
+repository = "https://github.com/kvnxiao/versualizer"
+readme = "README.md"
+keywords = ["lyrics", "spotify", "karaoke", "music", "visualization"]
+categories = ["multimedia", "multimedia::audio"]
+
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+
+# HTTP client
+reqwest = { version = "0.12", features = ["json"] }
+reqwest-middleware = "0.4"
+reqwest-retry = "0.7"
+
+# SQLite
+tokio-rusqlite = "0.6"
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+# Spotify
+rspotify = { version = "0.13", features = ["client-reqwest"] }
+
+# Error handling
+thiserror = "2"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Utilities
+dirs = "6"
+async-trait = "0.1"
+chrono = { version = "0.4", features = ["serde"] }
+urlencoding = "2"
+url = "2"
+open = "5"
+
+# Async channels for UI
+futures = "0.3"
+
+# Web server (for OAuth callback)
+axum = "0.8"
+
+# Shutdown handling
+tokio-util = { version = "0.7", features = ["rt"] }
+ctrlc = { version = "3.4", features = ["termination"] }
+
+# File watching
+notify = "8"
+notify-debouncer-mini = "0.5"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+# Lint groups with lower priority so individual lints can override them
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+nursery = { level = "deny", priority = -1 }
+cargo = { level = "deny", priority = -1 }
+# Individual lint levels
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+# Allow multiple crate versions - caused by transitive dependencies
+multiple_crate_versions = "allow"

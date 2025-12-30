@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch",
+      "WebSearch",
+      "Bash(cargo check:*)",
+      "mcp__github__search_code",
+      "mcp__github__get_file_contents",
+      "Bash(cargo test:*)",
+      "Bash(cd:*)",
+      "Bash(cat:*)",
+      "Bash(wc:*)",
+      "Bash(cargo build:*)",
+      "Bash(find:*)",
+      "Bash(cargo clippy:*)",
+      "Bash(grep:*)",
+      "Bash(head:*)",
+      "Bash(ls:*)",
+      "Bash(tree:*)",
+      "Bash(cargo doc:*)",
+      "Bash(cargo tree:*)",
+      "Bash(cargo +nightly clippy:*)"
+    ]
+  }
+}
