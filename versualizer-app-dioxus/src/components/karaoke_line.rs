@@ -1,14 +1,13 @@
 use crate::state::{KaraokeState, PrecomputedLyrics, INTRO_LINE_INDEX};
-use versualizer_core::UiConfig;
 use dioxus::prelude::*;
 use dioxus_motion::prelude::*;
+use versualizer_core::UiConfig;
 
 /// Buffer lines for smooth animation (not user-configurable).
 /// These extra lines are rendered outside the visible area to enable
 /// smooth fade in/out transitions.
 const BUFFER_LINES_BEFORE: usize = 1;
 const BUFFER_LINES_AFTER: usize = 1;
-
 
 /// Karaoke display component that shows current and upcoming lyrics
 /// with smooth animations powered by dioxus-motion.
