@@ -43,10 +43,10 @@ jobs:
           toolchain: stable
           cache: true
 
-      - name: Run Clippy
+      - name: Run clippy
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
-      - name: Run Rustfmt
+      - name: Run rustfmt
         run: cargo fmt --check
 
       - name: Run tests
