@@ -24,7 +24,7 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          sudo apt install glib-2.0.pc \
+          sudo apt install libglib2.0-dev \
             libwebkit2gtk-4.1-dev \
             build-essential \
             curl \
