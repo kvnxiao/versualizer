@@ -12,6 +12,7 @@ use crate::bridge::use_sync_engine_bridge;
 use crate::state::KaraokeState;
 use crate::window_state::WindowState;
 use dioxus::desktop::tao::dpi::PhysicalPosition;
+use dioxus::desktop::tao::window::Icon;
 use dioxus::desktop::{LogicalSize, WindowBuilder};
 use dioxus::prelude::*;
 use std::sync::Arc;
@@ -28,6 +29,8 @@ use versualizer_lyrics_spotify::SpotifyLyricsProvider;
 use versualizer_spotify_api::{
     SpotifyOAuth, SpotifyPoller, SpotifyProviderConfig, SPOTIFY_CONFIG_TEMPLATE,
 };
+
+const APP_NAME: &str = "Versualizer";
 
 #[allow(clippy::too_many_lines)]
 fn main() {
@@ -123,10 +126,13 @@ fn main() {
     // Load saved window position if available
     let saved_position = WindowState::load();
 
+    // Load window icon for taskbar
+    let window_icon = load_window_icon();
+
     // Configure window with default initial size
     // Window will be auto-resized by CSS-driven hook after first render
     let window = WindowBuilder::new()
-        .with_title("Versualizer")
+        .with_title(APP_NAME)
         .with_transparent(true)
         .with_decorations(false)
         .with_resizable(true)
@@ -134,7 +140,8 @@ fn main() {
         .with_always_on_top(true)
         .with_closable(true)
         .with_visible_on_all_workspaces(true)
-        .with_inner_size(LogicalSize::new(900.0, 200.0));
+        .with_inner_size(LogicalSize::new(900.0, 200.0))
+        .with_window_icon(window_icon);
 
     // Disable window shadow on Windows for true overlay effect
     #[cfg(target_os = "windows")]
@@ -191,8 +198,9 @@ fn app() -> Element {
     use_sync_engine_bridge(&sync_engine, karaoke);
 
     rsx! {
-       document::Link { rel: "icon", href: asset!("/icons/icon.ico") },
-       App {}
+        document::Link { rel: "icon", href: asset!("/icons/icon.ico") },
+        document::Title { "{APP_NAME}" },
+        App {}
     }
 }
 
@@ -390,6 +398,31 @@ async fn log_sync_events(sync_engine: Arc<SyncEngine>) {
             Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
                 info!("Missed {} sync events", n);
             }
+        }
+    }
+}
+
+/// Load window icon from embedded PNG for taskbar display
+fn load_window_icon() -> Option<Icon> {
+    // Use the 64x64 PNG for good taskbar resolution
+    let icon_bytes = include_bytes!("../icons/64x64.png");
+
+    let img = match image::load_from_memory(icon_bytes) {
+        Ok(img) => img.into_rgba8(),
+        Err(e) => {
+            error!("Failed to load window icon: {}", e);
+            return None;
+        }
+    };
+
+    let (width, height) = img.dimensions();
+    let rgba = img.into_raw();
+
+    match Icon::from_rgba(rgba, width, height) {
+        Ok(icon) => Some(icon),
+        Err(e) => {
+            error!("Failed to create window icon: {}", e);
+            None
         }
     }
 }

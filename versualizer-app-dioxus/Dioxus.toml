@@ -23,4 +23,4 @@ short_description = "A karaoke lyrics visualizer application"
 long_description = "A realtime karaoke lyrics visualizer providing customizable themes and effects for singing along to music on Spotify and other platforms."
 
 [bundle.windows]
-icon_path = "./icons/icon.ico"
+webview_install_mode = "Skip"

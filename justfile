@@ -12,4 +12,4 @@ test:
     cargo test --workspace
 
 bundle:
-    cd versualizer-app-dioxus && dx bundle
+    cd versualizer-app-dioxus && dx bundle --features bundle
