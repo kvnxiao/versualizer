@@ -47,6 +47,10 @@ pub fn App() -> Element {
         }
     });
 
+    // Clone window for non-macOS drag functionality before moving into future
+    #[cfg(not(target_os = "macos"))]
+    let window_for_drag = window.clone();
+
     // Poll for Ctrl+C signal and close window when received
     use_future(move || {
         let cancel_token = cancel_token.clone();
@@ -73,7 +77,6 @@ pub fn App() -> Element {
 
     #[cfg(not(target_os = "macos"))]
     {
-        let window_for_drag = window.clone();
         let on_mouse_down = move |_: MouseEvent| {
             let _ = window_for_drag.drag_window();
         };
