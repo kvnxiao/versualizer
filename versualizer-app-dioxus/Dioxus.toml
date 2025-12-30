@@ -8,3 +8,19 @@ default_platform = "desktop"
 [bundle]
 identifier = "com.versualizer.app"
 publisher = "Kevin Xiao"
+icon = [
+    "../resources/icons/16x16.png",
+    "../resources/icons/24x24.png",
+    "../resources/icons/32x32.png",
+    "../resources/icons/64x64.png",
+    "../resources/icons/128x128.png",
+    "../resources/icons/128x128@2x.png",
+    "../resources/icons/icon.ico",
+]
+copyright = "Copyright (c) 2025 Kevin Xiao"
+category = "Utility"
+short_description = "A karaoke lyrics visualizer application"
+long_description = "A realtime karaoke lyrics visualizer providing customizable themes and effects for singing along to music on Spotify and other platforms."
+
+[bundle.windows]
+icon_path = "../resources/icons/icon.ico"
