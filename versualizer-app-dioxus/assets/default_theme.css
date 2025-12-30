@@ -15,6 +15,10 @@
   --current-sung-color: #00FF00;
   /* Color for current line's unsung text (the text being revealed by the fill) */
   --current-unsung-color: #FFFFFF;
+  /* Text shadow for all text lines */
+  --current-text-shadow: 1px 1px 3px rgb(255, 192, 203);
+  /* Text shadow for upcoming (unsung) lines */
+  --unsung-text-shadow: 1px 1px 3px rgb(255, 192, 203);
   /* Color for upcoming lines (use rgba for opacity) */
   --unsung-color: rgba(255, 255, 255, 0.4);
   /* Background color of the container */
@@ -127,6 +131,7 @@ html, body {
 /* Unsung text for current line (background layer) */
 .current-line-unsung {
   color: var(--current-unsung-color);
+  text-shadow: var(--current-text-shadow);
 }
 
 /* Sung text for current line (foreground layer with fill animation) */
@@ -146,4 +151,5 @@ html, body {
 /* Upcoming line text (no animation) */
 .upcoming-line {
   color: var(--unsung-color);
+  text-shadow: var(--unsung-text-shadow);
 }
