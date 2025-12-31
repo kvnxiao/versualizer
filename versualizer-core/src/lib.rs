@@ -16,8 +16,6 @@ pub use config::{
     MusicConfig, ProvidersConfig, UiConfig, VersualizerConfig,
 };
 
-/// Re-export toml error type for config parsing error handling
-pub use toml::de::Error as TomlParseError;
 pub use error::CoreError;
 pub use fetcher::LyricsFetcher;
 pub use lrc::{LrcFile, LrcLine, LrcMetadata, LrcWord};
@@ -30,3 +28,5 @@ pub use provider::{FetchedLyrics, LyricsProvider, LyricsQuery, LyricsResult};
 pub use source::{MusicSource, MusicSourceProvider, MusicSourceProviderBuilder};
 pub use sync::{SyncEngine, SyncEvent};
 pub use time::DurationExt;
+/// Re-export toml error type for config parsing error handling
+pub use toml::de::Error as TomlParseError;
