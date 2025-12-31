@@ -16,6 +16,7 @@ use dioxus::desktop::tao::window::Icon;
 use dioxus::desktop::{LogicalSize, WindowBuilder};
 use dioxus::prelude::*;
 use rfd::{MessageButtons, MessageDialog, MessageDialogResult, MessageLevel};
+use std::fs::File;
 use std::path::Path;
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
@@ -36,15 +37,10 @@ const APP_NAME: &str = "Versualizer";
 
 #[allow(clippy::too_many_lines)]
 fn main() {
-    // Initialize logging
-    // Filter out noisy rspotify HTTP request logs
-    tracing_subscriber::registry()
-        .with(
-            EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| EnvFilter::new("info,rspotify_http=warn")),
-        )
-        .with(tracing_subscriber::fmt::layer())
-        .init();
+    // Initialize logging with optional file output
+    // Check config for logging.enabled before full config load
+    let file_logging_enabled = check_file_logging_enabled();
+    init_tracing(file_logging_enabled);
 
     // Load config or create template on first run
     // Pass provider templates to include in the generated config file
@@ -634,4 +630,72 @@ fn load_window_icon() -> Option<Icon> {
             None
         }
     }
+}
+
+/// Check if file logging is enabled by reading the config file.
+/// This is done before full config loading to set up tracing first.
+/// Returns `false` if config doesn't exist or can't be parsed.
+fn check_file_logging_enabled() -> bool {
+    // Minimal structs to parse just the logging.enabled field
+    #[derive(serde::Deserialize)]
+    struct PartialConfig {
+        #[serde(default)]
+        logging: PartialLoggingConfig,
+    }
+    #[derive(serde::Deserialize, Default)]
+    struct PartialLoggingConfig {
+        #[serde(default)]
+        enabled: bool,
+    }
+
+    let config_path = VersualizerConfig::config_path();
+    let Ok(content) = std::fs::read_to_string(&config_path) else {
+        return false;
+    };
+
+    toml::from_str::<PartialConfig>(&content)
+        .map(|c| c.logging.enabled)
+        .unwrap_or(false)
+}
+
+/// Initialize tracing with console output and optional file logging
+fn init_tracing(file_logging_enabled: bool) {
+    let env_filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new("info,rspotify_http=warn"));
+
+    let fmt_layer = tracing_subscriber::fmt::layer();
+
+    if file_logging_enabled {
+        let log_path = versualizer_core::paths::log_file_path();
+
+        // Create cache directory if needed
+        if let Some(parent) = log_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+
+        match File::create(&log_path) {
+            Ok(file) => {
+                let file_layer = tracing_subscriber::fmt::layer()
+                    .with_writer(Arc::new(file))
+                    .with_ansi(false);
+
+                tracing_subscriber::registry()
+                    .with(env_filter)
+                    .with(fmt_layer)
+                    .with(file_layer)
+                    .init();
+
+                return;
+            }
+            Err(e) => {
+                eprintln!("Failed to create log file at {}: {e}", log_path.display());
+            }
+        }
+    }
+
+    // Fallback: console only
+    tracing_subscriber::registry()
+        .with(env_filter)
+        .with(fmt_layer)
+        .init();
 }

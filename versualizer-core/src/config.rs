@@ -15,6 +15,9 @@ pub struct VersualizerConfig {
     pub lyrics: LyricsConfig,
     /// UI configuration
     pub ui: UiConfig,
+    /// Logging configuration
+    #[serde(default)]
+    pub logging: LoggingConfig,
     /// Provider-specific configurations (dynamic)
     #[serde(default)]
     pub providers: ProvidersConfig,
@@ -101,6 +104,14 @@ pub struct UiConfig {
     pub layout: LayoutConfig,
     #[serde(default)]
     pub animation: AnimationConfig,
+}
+
+/// Logging configuration
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct LoggingConfig {
+    /// Enable file logging to cache directory
+    #[serde(default)]
+    pub enabled: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -234,6 +245,10 @@ source = "spotify"
 # Provider priority: providers are tried in order
 # Available: "lrclib", "spotify_lyrics"
 providers = ["lrclib"]
+
+[logging]
+# Enable file logging to cache directory (versualizer.log)
+enabled = false
 
 "#;
 
