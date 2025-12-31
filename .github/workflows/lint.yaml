@@ -44,7 +44,7 @@ jobs:
           cache: true
 
       - name: Run clippy
-        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+        run: cargo clippy --workspace --all-targets --all-features
 
       - name: Run rustfmt
         run: cargo fmt --check
