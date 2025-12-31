@@ -1,4 +1,4 @@
-# AGENTS.md - Rust Development Guidelines
+# Rust Development Guidelines
 
 ## Overview
 This document contains essential best practices and guidelines for AI agents and developers working on Rust projects. Following these principles ensures safe, maintainable, and idiomatic Rust code.
@@ -6,7 +6,7 @@ This document contains essential best practices and guidelines for AI agents and
 ---
 
 ## Table of Contents
-1. [Clippy Configuration](#clippy-configuration)
+1. [Linter and Formatter Configuration](#linter-and-formatter-configuration)
 2. [Error Handling](#error-handling)
 3. [Defensive Programming](#defensive-programming)
 4. [Code Quality Standards](#code-quality-standards)
@@ -14,26 +14,22 @@ This document contains essential best practices and guidelines for AI agents and
 6. [Testing Guidelines](#testing-guidelines)
 7. [Documentation Requirements](#documentation-requirements)
 8. [Performance Considerations](#performance-considerations)
-9. [Documentation and Research Tools](#documentation-and-research-tools)
-10. [UI Libraries](#ui-libraries)
-11. [Dependency Management](#dependency-management)
-12. [Multi-Crate Workspaces](#multi-crate-workspaces)s
+9. [Dependency Management](#dependency-management)
+10. [Multi-Crate Workspaces](#multi-crate-workspaces)
 
 ---
 
-## Clippy Configuration
+## Linter and Formatter Configuration
 
-### Enable All Clippy Warnings
-Always run Clippy with the strictest settings to catch potential issues early.
+### Clippy
 
-**In your `Cargo.toml`:**
+Always use this clippy lint configuration in `Cargo.toml`:
 ```toml
 [lints.clippy]
 # Deny all warnings - treat them as errors
-all = "deny"
-pedantic = "deny"
-nursery = "deny"
-cargo = "deny"
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+cargo = { level = "deny", priority = -1 }
 unwrap_used = "deny"
 expect_used = "deny"
 panic = "deny"
@@ -41,17 +37,7 @@ panic = "deny"
 # Unimplemented items can be left as warnings
 todo = "warn"
 unimplemented = "warn"
-```
 
-**Or via command line:**
-```bash
-cargo clippy -- -D warnings -D clippy::all -D clippy::pedantic -W clippy::nursery
-```
-
-### Key Clippy Lints to Enable
-
-```toml
-[lints.clippy]
 # Correctness (deny)
 cast_lossless = "deny"
 cast_possible_truncation = "deny"
@@ -68,8 +54,12 @@ needless_pass_by_value = "warn"
 # Style (warn)
 missing_errors_doc = "warn"
 missing_panics_doc = "warn"
-module_name_repetitions = "warn"
+
+# Allow multiple crate versions caused by transitive dependencies
+multiple_crate_versions = "allow"
 ```
+
+Always run Clippy with `cargo clippy --workspace --all-targets --all-features` to catch potential issues early, followed by a `cargo fmt --check` to ensure code is formatted correctly.
 
 ---
 
@@ -334,8 +324,8 @@ Use the latest stable Rust edition:
 
 ```toml
 [package]
-edition = "2021"
-rust-version = "1.75"  # Specify MSRV
+edition = "2024"
+rust-version = "1.85"  # Specify MSRV
 ```
 
 ### Code Organization
@@ -405,126 +395,324 @@ fn get_user_by_type(user_type: UserType) -> Result<User> {
 }
 ```
 
-### Use `#[must_use]` Attribute
+### Use `#[must_use]` Strategically
+
+**Core principle:** Use `#[must_use]` when ignoring a value would likely be a mistake or indicate a logic error.
+
+**ALWAYS include a custom message** to provide context to the caller about why the value matters.
+
+#### When to Use `#[must_use]`
+
+**1. Results and Error Types**
+
+Types like `Result` already have `#[must_use]` built-in, but add it to your custom error-returning functions for emphasis:
 
 ```rust
-#[must_use = "Result must be used or explicitly ignored"]
-pub fn critical_operation() -> Result<Data> {
+#[must_use = "errors must be handled, not silently ignored"]
+pub fn validate_config(config: &Config) -> Result<(), ValidationError> {
+    // ...
+}
+```
+
+**2. Builder Patterns**
+
+When methods return a modified version rather than mutating in place:
+
+```rust
+#[must_use = "builders must be used to construct the final value"]
+pub struct QueryBuilder {
+    filters: Vec<Filter>,
+}
+
+impl QueryBuilder {
+    #[must_use = "this returns a new builder with the filter added"]
+    pub fn filter(mut self, f: Filter) -> Self {
+        self.filters.push(f);
+        self
+    }
+
+    #[must_use = "call .execute() to run the query"]
+    pub fn build(self) -> Query {
+        Query { filters: self.filters }
+    }
+}
+```
+
+**3. Expensive Computations**
+
+Functions that do significant work but don't have side effects:
+
+```rust
+#[must_use = "computing the hash is expensive; use the result"]
+pub fn compute_hash(data: &[u8]) -> Hash {
+    // CPU-intensive hashing...
+}
+
+#[must_use = "parsing is expensive; don't discard the result"]
+pub fn parse_document(input: &str) -> Document {
+    // Complex parsing logic...
+}
+```
+
+**4. Values Representing State Changes**
+
+When ignoring the return means losing important state information:
+
+```rust
+#[must_use = "the guard must be held to maintain the lock"]
+pub fn acquire_lock(&self) -> LockGuard<'_> {
     // ...
 }
 
+#[must_use = "the handle must be stored to keep the connection alive"]
+pub fn connect(addr: &str) -> ConnectionHandle {
+    // ...
+}
+
+#[must_use = "the previous value may need to be processed"]
+pub fn swap(&mut self, new_value: T) -> T {
+    std::mem::replace(&mut self.value, new_value)
+}
+```
+
+**5. Types That Should Never Be Ignored**
+
+Apply `#[must_use]` to the type itself, not just functions:
+
+```rust
+#[must_use = "futures do nothing unless polled"]
+pub struct MyFuture<T> {
+    // ...
+}
+
+#[must_use = "iterators are lazy and do nothing unless consumed"]
+pub struct FilteredIterator<I> {
+    // ...
+}
+```
+
+#### Bad Examples (Missing Context)
+
+```rust
+// ❌ BAD: No message - caller doesn't know why it matters
 #[must_use]
 pub fn create_builder() -> Builder {
     Builder::new()
 }
+
+// ❌ BAD: Generic message that doesn't help
+#[must_use = "don't ignore this"]
+pub fn process(data: &Data) -> ProcessedData {
+    // ...
+}
 ```
 
-### Prefer `.into()` for Type Conversions
-
-Use `.into()` instead of specific conversion methods when the type can be inferred. This makes refactoring easier and the code more flexible.
-
-**Why `.into()` is better:**
-- Makes refactoring easier - change the target type without changing conversion calls
-- More generic - works with any type that implements `Into<T>`
-- Cleaner at call sites
-- The compiler infers the target type from context
-
-**Examples:**
+#### Good Examples (Clear Context)
 
 ```rust
-// Bad: Specific conversion method
-fn process_name(name: String) {
+// ✅ GOOD: Clear explanation of consequence
+#[must_use = "the builder must be used to construct the final Config"]
+pub fn create_builder() -> ConfigBuilder {
+    ConfigBuilder::new()
+}
+
+// ✅ GOOD: Explains what happens if ignored
+#[must_use = "the processed data contains the transformation result"]
+pub fn process(data: &Data) -> ProcessedData {
+    // ...
+}
+```
+
+#### When NOT to Use `#[must_use]`
+
+```rust
+// Don't use for side-effect functions where the return is optional info
+pub fn log_event(event: &Event) -> usize {
+    // Returns bytes written, but logging happened regardless
+}
+
+// Don't use for simple getters
+pub fn len(&self) -> usize {
+    self.items.len()
+}
+
+// Don't use when ignoring is a valid common case
+pub fn try_recv(&self) -> Option<Message> {
+    // Often called in a loop where None is expected
+}
+```
+
+### Choosing Function Parameter Types
+
+Follow the Rust API Guidelines for choosing between borrowed types, `impl AsRef<T>`, and `impl Into<T>`.
+
+#### Decision Hierarchy
+
+**1. Prefer borrowed types when you don't need ownership:**
+
+```rust
+// ✅ BEST: Accept &str when you only need to read
+pub fn validate_name(name: &str) -> bool {
+    !name.is_empty() && name.len() < 100
+}
+
+// ✅ BEST: Accept &Path when you only need to read
+pub fn file_exists(path: &Path) -> bool {
+    path.exists()
+}
+
+// Callers can pass &str, &String, or String (via deref)
+validate_name("Alice");
+validate_name(&my_string);
+```
+
+**2. Use `impl AsRef<T>` for maximum flexibility without ownership:**
+
+```rust
+// ✅ GOOD: Accept anything that can be borrowed as Path
+pub fn read_config(path: impl AsRef<Path>) -> Result<Config> {
+    let path = path.as_ref();
+    let content = std::fs::read_to_string(path)?;
     // ...
 }
 
-let name = "Alice".to_string();
-process_name(name);
-
-// Good: Use into() for flexibility
-fn process_name(name: String) {
-    // ...
-}
-
-let name = "Alice".into();
-process_name(name);
-
-// Even better: Accept impl Into<String>
-fn process_name(name: impl Into<String>) {
-    let name = name.into();
-    // ...
-}
-
-process_name("Alice");  // No conversion needed at call site!
+// Callers can pass &str, String, PathBuf, &Path, etc.
+read_config("config.toml");
+read_config(PathBuf::from("config.toml"));
 ```
 
-**More examples:**
+**3. Use `impl Into<T>` when you need ownership:**
 
 ```rust
-// Bad: Explicit conversions
-let path = PathBuf::from("/home/user");
-let string = user_input.to_string();
-let vec = slice.to_vec();
-
-// Good: Use into() when type is inferred
-let path: PathBuf = "/home/user".into();
-let string: String = user_input.into();
-let vec: Vec<_> = slice.into();
-
-// Best: Let function signature drive inference
-fn open_file(path: impl Into<PathBuf>) -> Result<File> {
-    let path = path.into();
-    File::open(path)
+// ✅ GOOD: Use impl Into when storing the value
+pub struct User {
+    name: String,
+    email: String,
 }
 
-open_file("/home/user");  // Clean!
-```
-
-**Function signatures with `Into<T>`:**
-
-```rust
-// Bad: Rigid signature
-pub fn create_user(name: String, email: String) -> User {
-    User { name, email }
-}
-
-// Caller must convert explicitly
-create_user("Alice".to_string(), "alice@example.com".to_string());
-
-// Good: Flexible signature
-pub fn create_user(
-    name: impl Into<String>,
-    email: impl Into<String>,
-) -> User {
-    User {
-        name: name.into(),
-        email: email.into(),
+impl User {
+    pub fn new(name: impl Into<String>, email: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            email: email.into(),
+        }
     }
 }
 
-// Caller can pass &str directly
-create_user("Alice", "alice@example.com");
+// Clean call site - no .to_string() needed
+let user = User::new("Alice", "alice@example.com");
 ```
 
-**When NOT to use `.into()`:**
+**4. Use concrete owned types when the API requires it or for performance:**
 
 ```rust
-// Don't use when conversion intent should be explicit
-let num_str = format!("{}", number);  // Clear: formatting
-let parsed: u32 = str.parse()?;       // Clear: parsing
+// Sometimes you need the concrete type for clarity or API constraints
+pub fn set_buffer(buffer: Vec<u8>) {
+    // Takes ownership explicitly
+}
 
-// Don't use when type can't be inferred
-let value = something.into();  // Error: can't infer type!
-let value: TargetType = something.into();  // OK
-
-// Don't use for fallible conversions - use try_into()
-let small: u8 = large_number.try_into()?;  // Can fail
+// Or when the function can be expensively repeated in a hot loop
+pub fn hash_bytes(data: &[u8]) -> u64 {
+    // ...
+}
 ```
 
-**Summary:**
-- Default to `.into()` for infallible type conversions
-- Use `impl Into<T>` in function signatures for flexibility
-- Only use specific methods when clarity demands it
-- Always use `.try_into()` for fallible conversions
+#### When to Use Each Approach
+
+| Scenario                         | Recommended Type        | Example                           |
+| -------------------------------- | ----------------------- | --------------------------------- |
+| Read-only access                 | `&str`, `&Path`, `&[T]` | `fn print(msg: &str)`             |
+| Read-only, flexible input        | `impl AsRef<T>`         | `fn read(path: impl AsRef<Path>)` |
+| Need ownership, want flexibility | `impl Into<T>`          | `fn new(name: impl Into<String>)` |
+| Need exact type                  | Concrete type           | `fn process(data: Vec<u8>)`       |
+
+#### Builder Pattern
+
+Builders that store values should use `impl Into<T>`:
+
+```rust
+impl ConfigBuilder {
+    // ✅ GOOD: Builder stores the value, use impl Into
+    pub fn host(mut self, host: impl Into<String>) -> Self {
+        self.host = Some(host.into());
+        self
+    }
+
+    // ✅ GOOD: Clean chaining
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
+}
+
+// Clean usage
+let config = ConfigBuilder::new()
+    .host("localhost")  // No .to_string() needed
+    .timeout(Duration::from_secs(30))
+    .build()?;
+```
+
+#### Call-Site Conversions
+
+When calling functions that require owned types, use `.into()` or specific methods:
+
+```rust
+// External API requires String
+fn external_api(data: String) { /* ... */ }
+
+// Use .into() for generic conversion
+external_api("hello".into());
+
+// Or use specific method when clearer
+external_api("hello".to_string());
+external_api(String::from("hello"));
+
+// For PathBuf
+let path: PathBuf = "/home/user".into();
+let path = PathBuf::from("/home/user");  // Also fine
+```
+
+#### Trade-offs of `impl Into<T>`
+
+**Pros:**
+- Clean call sites
+- Flexible - accepts multiple input types
+- No allocation if caller already has owned value
+
+**Cons:**
+- Prevents use in trait objects (`dyn Trait`)
+- Slightly more complex function signatures
+- May hide allocations from the caller
+
+#### When NOT to Use `impl Into<T>` or `impl AsRef<T>`
+
+```rust
+// Don't use when you need trait objects
+trait Handler {
+    // ❌ Can't use impl Trait in trait definitions
+    fn handle(&self, msg: impl Into<String>);
+
+    // ✅ Use concrete types instead
+    fn handle(&self, msg: &str);
+}
+
+// Don't use for fallible conversions
+fn parse_number(s: &str) -> Result<u32> {
+    s.parse()  // Explicit parsing, not Into
+}
+
+// Don't use when conversion intent should be explicit
+let formatted = format!("{}", number);  // Clear: formatting
+let parsed: u32 = input.parse()?;       // Clear: parsing
+```
+
+#### Summary
+
+1. **Default to borrowed types** (`&str`, `&Path`) when you don't need ownership
+2. **Use `impl AsRef<T>`** for flexible borrowing across multiple types
+3. **Use `impl Into<T>`** when you need ownership and want clean call sites
+4. **Use concrete types** when the API requires it or for trait objects
+5. **At call sites**, use `.into()` or specific conversions as needed
 
 ---
 
@@ -834,31 +1022,44 @@ The Rust ecosystem has mature, safe wrappers for most use cases. Use them.
 
 ## Testing Guidelines
 
+### Use `.expect()` in Tests
+
+**In test code, prefer `.expect()` over `.unwrap()`** - the descriptive message makes test failures much easier to debug.
+
+```rust
+// ❌ BAD: No context when test fails
+let result = process_input("valid").unwrap();
+
+// ✅ GOOD: Clear message on failure
+let result = process_input("valid").expect("process_input should succeed with valid input");
+```
+
 ### Test Organization
 
 ```rust
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_valid_input() {
-        let result = process_input("valid").unwrap();
+        let result = process_input("valid")
+            .expect("process_input should succeed with valid input");
         assert_eq!(result.value(), 42);
     }
-    
+
     #[test]
     fn test_invalid_input() {
         let result = process_input("");
-        assert!(result.is_err());
-        match result {
-            Err(MyLibraryError::ValidationError { field, .. }) => {
-                assert_eq!(field, "input");
-            },
-            _ => panic!("Expected ValidationError"),
-        }
+        assert!(result.is_err(), "process_input should fail with empty input");
+
+        let err = result.expect_err("expected an error");
+        assert!(
+            matches!(err, MyLibraryError::ValidationError { ref field, .. } if field == "input"),
+            "expected ValidationError for 'input' field, got: {err:?}"
+        );
     }
-    
+
     #[test]
     #[should_panic(expected = "not implemented")]
     fn test_unimplemented_feature() {
@@ -1036,156 +1237,6 @@ for item in collection.drain(..) {
 
 ---
 
-## Documentation and Research Tools
-
-### Using MCP Servers for Crate Documentation
-
-When working with Rust crates, leverage Model Context Protocol (MCP) servers to access up-to-date documentation:
-
-#### GitHub MCP
-Use the GitHub MCP server to access the latest source code, examples, and documentation directly from repositories:
-
-```
-# Access latest documentation from main/master branch
-# Especially critical for rapidly evolving crates
-GitHub MCP: Read files from github.com/{org}/{repo}/tree/main
-```
-
-**When to use GitHub MCP:**
-- Accessing the **latest** API changes not yet in published docs
-- Reading example code from the repository
-- Checking recent commits and changes
-- Accessing documentation from specific branches (especially `main`)
-- **REQUIRED for Freya** - see UI Libraries section below
-
-#### Context7 MCP
-Use Context7 MCP for general crate documentation queries:
-
-```
-# Query published crate documentation
-Context7 MCP: Search docs.rs and crate documentation
-```
-
-**When to use Context7:**
-- Looking up stable, published API documentation
-- Searching across multiple crates
-- Finding general usage patterns
-- Accessing docs.rs content
-
-**Important:** For rapidly evolving crates, GitHub MCP should be preferred over Context7 as it provides access to the most recent changes.
-
-### Research Workflow for New Crates
-
-When integrating a new crate:
-
-1. **Check docs.rs** - Review the published documentation
-2. **Use Context7 MCP** - Query for general usage patterns
-3. **Use GitHub MCP** - Read the latest examples from the repository
-4. **Check CHANGELOG.md** - Understand recent breaking changes
-5. **Review issues/discussions** - Understand common pitfalls
-
----
-
-## UI Libraries
-
-### Choosing a Rust GUI Library
-
-When selecting a UI library for a Rust project, **always consult** the comprehensive survey at:
-
-**https://www.boringcactus.com/2025/04/13/2025-survey-of-rust-gui-libraries.html**
-
-This survey provides up-to-date comparisons of available Rust GUI libraries, their maturity levels, use cases, and trade-offs.
-
-### Common UI Library Options
-
-Based on the survey, here are typical categories:
-
-- **Immediate Mode:** egui, iced
-- **Native:** gtk-rs, relm4
-- **Web-based:** Tauri, Dioxus
-- **Custom Renderers:** Freya, Slint
-- **Game Engine UI:** bevy_ui
-
-### Working with Freya
-
-**CRITICAL: Freya is rapidly evolving and the main branch differs significantly from stable releases.**
-
-#### Documentation Source Rules for Freya
-
-1. **ALWAYS use GitHub MCP** to access Freya documentation from the `main` branch
-2. **NEVER rely on Context7 or old examples** - they are likely outdated
-3. **Read directly from the repository** at `github.com/marc2332/freya`
-
-**Why this matters:**
-- Freya's API changes frequently between versions
-- The `main` branch contains the latest API design
-- Old examples from stable versions may use deprecated patterns
-- docs.rs may lag behind current development
-
-#### Accessing Freya Documentation
-
-```
-# Correct approach - Use GitHub MCP
-GitHub MCP: Read from github.com/marc2332/freya/tree/main/examples
-GitHub MCP: Read from github.com/marc2332/freya/tree/main/crates/components
-GitHub MCP: Read from github.com/marc2332/freya/tree/main/README.md
-
-# AVOID - These may be outdated
-Context7: Query Freya docs  # May reference old API
-docs.rs/freya             # May lag behind main branch
-```
-
-#### Freya Development Checklist
-
-When working with Freya:
-
-- [ ] Consulted latest examples from `main` branch via GitHub MCP
-- [ ] Checked for API changes in recent commits
-- [ ] Verified component API matches current `main` branch
-- [ ] Reviewed `CHANGELOG.md` for breaking changes
-- [ ] Tested against the version specified in `Cargo.toml`
-
-#### Example Freya Workflow
-
-```rust
-// Step 1: Use GitHub MCP to read latest example
-// GitHub: Read github.com/marc2332/freya/tree/main/examples/counter.rs
-
-// Step 2: Check component documentation
-// GitHub: Read github.com/marc2332/freya/tree/main/crates/components/src/button.rs
-
-// Step 3: Implement using latest API patterns
-use freya::prelude::*;
-
-fn app() -> Element {
-    let mut count = use_signal(|| 0);
-    
-    rsx! {
-        rect {
-            height: "100%",
-            width: "100%",
-            Button {
-                onpress: move |_| count += 1,
-                label { "Count: {count}" }
-            }
-        }
-    }
-}
-```
-
-### UI Library Best Practices
-
-Regardless of the chosen UI library:
-
-1. **Pin exact versions** in `Cargo.toml` for stability
-2. **Read official examples** from the repository
-3. **Check compatibility** with your Rust version
-4. **Test on target platforms** early
-5. **Monitor breaking changes** in updates
-6. **Use GitHub MCP** for latest documentation when available
-
----
-
 ## Dependency Management
 
 ### Specify Exact Versions for Applications
@@ -1240,8 +1291,7 @@ When writing or reviewing Rust code, ensure:
 - [ ] Errors defined using `thiserror` for libraries
 - [ ] All inputs validated at API boundaries
 - [ ] Type system used to enforce invariants
-- [ ] Prefer `.into()` for type conversions when type can be inferred
-- [ ] Use `impl Into<T>` in function signatures for flexibility
+- [ ] Choose appropriate parameter types: borrowed (`&str`) > `impl AsRef<T>` > `impl Into<T>` > concrete owned
 - [ ] No `unsafe` code (or minimal, well-documented if absolutely necessary)
 - [ ] Searched for safe wrapper crates before using `unsafe`
 - [ ] All public items documented with examples
@@ -1250,10 +1300,6 @@ When writing or reviewing Rust code, ensure:
 - [ ] Dependencies minimized and features specified
 - [ ] Code formatted with `rustfmt`
 - [ ] No compiler warnings (`cargo build` clean)
-- [ ] Used GitHub MCP for latest crate documentation when needed
-- [ ] Used Context7 MCP for stable crate documentation queries
-- [ ] For Freya: Consulted `main` branch via GitHub MCP (not old examples)
-- [ ] For UI libraries: Consulted boringcactus survey for library selection
 - [ ] For workspaces: Crates at root level (not in `crates/` folder)
 - [ ] For workspaces: Shared dependencies defined in `[workspace.dependencies]`
 - [ ] For workspaces: No circular dependencies between crates
@@ -1349,8 +1395,8 @@ expect_used = "deny"
 
 # Optional: default crate (e.g., main CLI)
 [workspace.package]
-edition = "2021"
-rust-version = "1.75"
+edition = "2024"
+rust-version = "1.85"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/user/my-project"
 
@@ -1449,7 +1495,7 @@ tokio = { workspace = true, features = ["rt-multi-thread", "net"] }
 # Use workspace.package for shared metadata
 [workspace.package]
 version = "0.2.0"  # Single source of truth
-edition = "2021"
+edition = "2024"
 authors = ["Your Name <you@example.com>"]
 
 # Member crates inherit
@@ -1735,7 +1781,3 @@ When setting up a workspace:
 - [The Rustonomicon](https://doc.rust-lang.org/nomicon/) - For unsafe code
 - [Effective Rust](https://www.lurklurk.org/effective-rust/)
 - [Clippy Lints](https://rust-lang.github.io/rust-clippy/master/)
-
----
-
-*Last Updated: December 2025*

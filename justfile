@@ -2,7 +2,7 @@ fmt:
     cargo fmt
 
 lint:
-    cargo clippy --workspace --all-targets --all-features -- -D warnings
+    cargo clippy --workspace --all-targets --all-features
     cargo fmt --check
 
 dev:
