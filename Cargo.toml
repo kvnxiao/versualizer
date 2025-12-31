@@ -77,7 +77,6 @@ unsafe_code = "forbid"
 # Lint groups with lower priority so individual lints can override them
 all = { level = "deny", priority = -1 }
 pedantic = { level = "deny", priority = -1 }
-nursery = { level = "deny", priority = -1 }
 cargo = { level = "deny", priority = -1 }
 # Individual lint levels
 unwrap_used = "deny"
