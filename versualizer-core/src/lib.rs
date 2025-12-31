@@ -12,9 +12,10 @@ pub mod time;
 
 pub use cache::LyricsCache;
 pub use config::{
-    AnimationConfig, LayoutConfig, LyricsConfig, LyricsProviderType, MusicConfig, ProvidersConfig,
-    UiConfig, VersualizerConfig,
+    build_config_template, AnimationConfig, LayoutConfig, LyricsConfig, LyricsProviderType,
+    MusicConfig, ProvidersConfig, UiConfig, VersualizerConfig,
 };
+
 pub use error::CoreError;
 pub use fetcher::LyricsFetcher;
 pub use lrc::{LrcFile, LrcLine, LrcMetadata, LrcWord};
@@ -27,3 +28,5 @@ pub use provider::{FetchedLyrics, LyricsProvider, LyricsQuery, LyricsResult};
 pub use source::{MusicSource, MusicSourceProvider, MusicSourceProviderBuilder};
 pub use sync::{SyncEngine, SyncEvent};
 pub use time::DurationExt;
+/// Re-export toml error type for config parsing error handling
+pub use toml::de::Error as TomlParseError;

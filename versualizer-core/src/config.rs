@@ -15,6 +15,9 @@ pub struct VersualizerConfig {
     pub lyrics: LyricsConfig,
     /// UI configuration
     pub ui: UiConfig,
+    /// Logging configuration
+    #[serde(default)]
+    pub logging: LoggingConfig,
     /// Provider-specific configurations (dynamic)
     #[serde(default)]
     pub providers: ProvidersConfig,
@@ -103,6 +106,14 @@ pub struct UiConfig {
     pub animation: AnimationConfig,
 }
 
+/// Logging configuration
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct LoggingConfig {
+    /// Enable file logging to cache directory
+    #[serde(default)]
+    pub enabled: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LayoutConfig {
     #[serde(default = "default_max_lines")]
@@ -189,16 +200,8 @@ impl VersualizerConfig {
                 fs::create_dir_all(parent)?;
             }
 
-            // Build template with provider sections
-            let mut template = CONFIG_TEMPLATE_BASE.to_string();
-            if let Some(templates) = provider_templates {
-                for provider_template in templates {
-                    template.push_str(provider_template);
-                }
-            }
-            template.push_str(CONFIG_TEMPLATE_UI);
-
-            // Write template config
+            // Build and write template config
+            let template = build_config_template(provider_templates);
             fs::write(&config_path, template)?;
 
             return Err(CoreError::ConfigNotFound { path: config_path });
@@ -215,6 +218,21 @@ impl VersualizerConfig {
     }
 }
 
+/// Build the config template string with optional provider-specific sections.
+///
+/// This is useful for creating a fresh config file or resetting to defaults.
+#[must_use]
+pub fn build_config_template(provider_templates: Option<&[&str]>) -> String {
+    let mut template = CONFIG_TEMPLATE_BASE.to_string();
+    if let Some(templates) = provider_templates {
+        for provider_template in templates {
+            template.push_str(provider_template);
+        }
+    }
+    template.push_str(CONFIG_TEMPLATE_UI);
+    template
+}
+
 /// Base config template (source-agnostic)
 const CONFIG_TEMPLATE_BASE: &str = r#"# Versualizer Configuration
 # ~/.config/versualizer/config.toml
@@ -227,6 +245,10 @@ source = "spotify"
 # Provider priority: providers are tried in order
 # Available: "lrclib", "spotify_lyrics"
 providers = ["lrclib"]
+
+[logging]
+# Enable file logging to cache directory (versualizer.log)
+enabled = false
 
 "#;
 

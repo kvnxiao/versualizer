@@ -15,6 +15,9 @@ use dioxus::desktop::tao::dpi::PhysicalPosition;
 use dioxus::desktop::tao::window::Icon;
 use dioxus::desktop::{LogicalSize, WindowBuilder};
 use dioxus::prelude::*;
+use rfd::{MessageButtons, MessageDialog, MessageDialogResult, MessageLevel};
+use std::fs::File;
+use std::path::Path;
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info};
@@ -22,7 +25,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilte
 use versualizer_core::config::LyricsProviderType;
 use versualizer_core::{
     CoreError, LyricsCache, LyricsFetcher, LyricsProvider, MusicSource, SyncEngine, SyncEvent,
-    VersualizerConfig,
+    TomlParseError, VersualizerConfig,
 };
 use versualizer_lyrics_lrclib::LrclibProvider;
 use versualizer_lyrics_spotify::SpotifyLyricsProvider;
@@ -34,28 +37,40 @@ const APP_NAME: &str = "Versualizer";
 
 #[allow(clippy::too_many_lines)]
 fn main() {
-    // Initialize logging
-    // Filter out noisy rspotify HTTP request logs
-    tracing_subscriber::registry()
-        .with(
-            EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| EnvFilter::new("info,rspotify_http=warn")),
-        )
-        .with(tracing_subscriber::fmt::layer())
-        .init();
+    // Initialize logging with optional file output
+    // Check config for logging.enabled before full config load
+    let file_logging_enabled = check_file_logging_enabled();
+    init_tracing(file_logging_enabled);
 
     // Load config or create template on first run
     // Pass provider templates to include in the generated config file
     let provider_templates: &[&str] = &[SPOTIFY_CONFIG_TEMPLATE];
     let config = match VersualizerConfig::load_or_create(Some(provider_templates)) {
         Ok(config) => config,
+        Err(CoreError::ConfigNotFound { path }) => {
+            // Config was just created - show dialog informing user
+            show_new_config_dialog(&path);
+            std::process::exit(0);
+        }
+        Err(CoreError::ConfigParseError(parse_error)) => {
+            // Config has TOML syntax errors - show dialog with reset option
+            show_config_parse_error_dialog(&parse_error, &VersualizerConfig::config_path());
+            std::process::exit(1);
+        }
         Err(e) => {
             error!("{e}");
+            show_generic_error_dialog(&e.to_string());
             std::process::exit(1);
         }
     };
 
-    // Validate provider-specific config based on music source
+    // Validate config fields and show dialog if any are missing
+    let validation = validate_config_fields(&config);
+    if !validation.is_valid() {
+        show_config_error_dialog(&validation, &VersualizerConfig::config_path());
+    }
+
+    // Validate provider-specific config based on music source (for any remaining validation)
     if let Err(e) = validate_provider_config(&config) {
         error!("{e}");
         std::process::exit(1);
@@ -217,6 +232,196 @@ fn validate_provider_config(config: &VersualizerConfig) -> Result<(), CoreError>
     }
     // Future sources would have their own validation
     Ok(())
+}
+
+/// Result of config validation with all missing fields collected
+struct ConfigValidationResult {
+    missing_fields: Vec<String>,
+}
+
+impl ConfigValidationResult {
+    fn is_valid(&self) -> bool {
+        self.missing_fields.is_empty()
+    }
+
+    fn error_message(&self) -> String {
+        format!(
+            "The following required configuration fields are missing or empty:\n\n{}",
+            self.missing_fields
+                .iter()
+                .map(|f| format!("  \u{2022} {f}"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        )
+    }
+}
+
+/// Validate config and collect all missing fields for user-friendly error display
+fn validate_config_fields(config: &VersualizerConfig) -> ConfigValidationResult {
+    let mut missing_fields = Vec::new();
+
+    if config.music.source == MusicSource::Spotify {
+        match SpotifyProviderConfig::from_providers(&config.providers) {
+            Ok(Some(spotify_config)) => {
+                if spotify_config.client_id.is_empty() {
+                    missing_fields.push("providers.spotify.client_id".into());
+                }
+                if spotify_config.client_secret.is_empty() {
+                    missing_fields.push("providers.spotify.client_secret".into());
+                }
+            }
+            Ok(None) => {
+                missing_fields.push("providers.spotify".into());
+            }
+            Err(_) => {
+                missing_fields.push("providers.spotify (invalid format)".into());
+            }
+        }
+    }
+
+    ConfigValidationResult { missing_fields }
+}
+
+/// Show a native OS dialog for missing configuration and handle user response
+fn show_config_error_dialog(validation: &ConfigValidationResult, config_path: &Path) {
+    let message = format!(
+        "{}\n\nPlease edit the configuration file to add these values.\n\n\
+        Get Spotify credentials from:\nhttps://developer.spotify.com/dashboard",
+        validation.error_message()
+    );
+
+    let result = MessageDialog::new()
+        .set_level(MessageLevel::Error)
+        .set_title("Versualizer - Configuration Required")
+        .set_description(&message)
+        .set_buttons(MessageButtons::OkCancelCustom(
+            "Open Config".into(),
+            "Exit".into(),
+        ))
+        .show();
+
+    if matches!(result, MessageDialogResult::Custom(ref s) if s == "Open Config") {
+        // Open config file in default editor
+        if let Err(e) = open::that(config_path) {
+            error!("Failed to open config file: {e}");
+        }
+    }
+
+    // Always exit after showing the dialog
+    std::process::exit(1);
+}
+
+/// Show dialog when config is newly created
+fn show_new_config_dialog(config_path: &Path) {
+    let message = "A configuration file has been created.\n\n\
+        Please edit it with your Spotify credentials:\n\
+        \u{2022} providers.spotify.client_id\n\
+        \u{2022} providers.spotify.client_secret\n\n\
+        Get these from:\nhttps://developer.spotify.com/dashboard";
+
+    let result = MessageDialog::new()
+        .set_level(MessageLevel::Info)
+        .set_title("Versualizer - Configuration Created")
+        .set_description(message)
+        .set_buttons(MessageButtons::OkCancelCustom(
+            "Open Config".into(),
+            "Exit".into(),
+        ))
+        .show();
+
+    if matches!(result, MessageDialogResult::Custom(ref s) if s == "Open Config") {
+        if let Err(e) = open::that(config_path) {
+            error!("Failed to open config file: {e}");
+        }
+    }
+}
+
+/// Show dialog when config file has TOML parsing errors
+fn show_config_parse_error_dialog(parse_error: &TomlParseError, config_path: &Path) {
+    let message = format!(
+        "Your configuration file has a syntax error and cannot be loaded.\n\n\
+        Error: {parse_error}\n\n\
+        You can either:\n\
+        \u{2022} Open the config file and fix the syntax error\n\
+        \u{2022} Reset to a fresh configuration template"
+    );
+
+    let result = MessageDialog::new()
+        .set_level(MessageLevel::Error)
+        .set_title("Versualizer - Configuration Error")
+        .set_description(&message)
+        .set_buttons(MessageButtons::OkCancelCustom(
+            "Open Config".into(),
+            "Reset Config".into(),
+        ))
+        .show();
+
+    match result {
+        MessageDialogResult::Custom(button) if button == "Open Config" => {
+            // Open config file in default editor
+            if let Err(e) = open::that(config_path) {
+                error!("Failed to open config file: {e}");
+            }
+        }
+        MessageDialogResult::Custom(button) if button == "Reset Config" => {
+            // Reset config to template
+            if let Err(e) = reset_config_to_template(config_path) {
+                error!("Failed to reset config file: {e}");
+                // Show error dialog
+                MessageDialog::new()
+                    .set_level(MessageLevel::Error)
+                    .set_title("Versualizer - Reset Failed")
+                    .set_description(format!("Failed to reset configuration:\n{e}"))
+                    .set_buttons(MessageButtons::Ok)
+                    .show();
+            } else {
+                // Show success and open the file
+                MessageDialog::new()
+                    .set_level(MessageLevel::Info)
+                    .set_title("Versualizer - Configuration Reset")
+                    .set_description(
+                        "Configuration has been reset to the default template.\n\n\
+                        Please edit it with your Spotify credentials and restart the app.",
+                    )
+                    .set_buttons(MessageButtons::Ok)
+                    .show();
+                if let Err(e) = open::that(config_path) {
+                    error!("Failed to open config file: {e}");
+                }
+            }
+        }
+        _ => {
+            // User closed dialog or clicked an unexpected button - just exit
+        }
+    }
+
+    std::process::exit(1);
+}
+
+/// Reset the config file to the default template
+fn reset_config_to_template(config_path: &Path) -> std::io::Result<()> {
+    use std::fs;
+    use versualizer_core::config::build_config_template;
+
+    let provider_templates: &[&str] = &[SPOTIFY_CONFIG_TEMPLATE];
+    let template = build_config_template(Some(provider_templates));
+
+    fs::write(config_path, template)
+}
+
+/// Show a generic error dialog for unexpected errors
+fn show_generic_error_dialog(error_message: &str) {
+    let message = format!(
+        "An unexpected error occurred:\n\n{error_message}\n\n\
+        Please check your configuration file or report this issue."
+    );
+
+    MessageDialog::new()
+        .set_level(MessageLevel::Error)
+        .set_title("Versualizer - Error")
+        .set_description(&message)
+        .set_buttons(MessageButtons::Ok)
+        .show();
 }
 
 fn create_providers(config: &VersualizerConfig) -> Vec<Box<dyn LyricsProvider>> {
@@ -425,4 +630,72 @@ fn load_window_icon() -> Option<Icon> {
             None
         }
     }
+}
+
+/// Check if file logging is enabled by reading the config file.
+/// This is done before full config loading to set up tracing first.
+/// Returns `false` if config doesn't exist or can't be parsed.
+fn check_file_logging_enabled() -> bool {
+    // Minimal structs to parse just the logging.enabled field
+    #[derive(serde::Deserialize)]
+    struct PartialConfig {
+        #[serde(default)]
+        logging: PartialLoggingConfig,
+    }
+    #[derive(serde::Deserialize, Default)]
+    struct PartialLoggingConfig {
+        #[serde(default)]
+        enabled: bool,
+    }
+
+    let config_path = VersualizerConfig::config_path();
+    let Ok(content) = std::fs::read_to_string(&config_path) else {
+        return false;
+    };
+
+    toml::from_str::<PartialConfig>(&content)
+        .map(|c| c.logging.enabled)
+        .unwrap_or(false)
+}
+
+/// Initialize tracing with console output and optional file logging
+fn init_tracing(file_logging_enabled: bool) {
+    let env_filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new("info,rspotify_http=warn"));
+
+    let fmt_layer = tracing_subscriber::fmt::layer();
+
+    if file_logging_enabled {
+        let log_path = versualizer_core::paths::log_file_path();
+
+        // Create cache directory if needed
+        if let Some(parent) = log_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+
+        match File::create(&log_path) {
+            Ok(file) => {
+                let file_layer = tracing_subscriber::fmt::layer()
+                    .with_writer(Arc::new(file))
+                    .with_ansi(false);
+
+                tracing_subscriber::registry()
+                    .with(env_filter)
+                    .with(fmt_layer)
+                    .with(file_layer)
+                    .init();
+
+                return;
+            }
+            Err(e) => {
+                eprintln!("Failed to create log file at {}: {e}", log_path.display());
+            }
+        }
+    }
+
+    // Fallback: console only
+    tracing_subscriber::registry()
+        .with(env_filter)
+        .with(fmt_layer)
+        .init();
 }

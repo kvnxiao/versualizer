@@ -17,6 +17,9 @@ pub const WINDOW_STATE_FILE_NAME: &str = ".window_state.json";
 /// The name of the theme CSS file
 pub const THEME_FILE_NAME: &str = "theme.css";
 
+/// The name of the log file
+pub const LOG_FILE_NAME: &str = "versualizer.log";
+
 /// Get the configuration directory path (~/.config/versualizer/)
 #[must_use]
 pub fn config_dir() -> PathBuf {
@@ -48,4 +51,23 @@ pub fn window_state_path() -> PathBuf {
 #[must_use]
 pub fn theme_path() -> PathBuf {
     config_dir().join(THEME_FILE_NAME)
+}
+
+/// Get the cache directory path using `dirs::cache_dir()`
+///
+/// Returns `{cache_dir}/versualizer/` where `cache_dir` is:
+/// - Windows: `C:/Users/{user}/AppData/Local/`
+/// - Linux: `~/.cache/`
+/// - macOS: `~/Library/Caches/`
+#[must_use]
+pub fn cache_dir() -> PathBuf {
+    dirs::cache_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(CONFIG_DIR_NAME)
+}
+
+/// Get the log file path (`{cache_dir}/versualizer/versualizer.log`)
+#[must_use]
+pub fn log_file_path() -> PathBuf {
+    cache_dir().join(LOG_FILE_NAME)
 }
