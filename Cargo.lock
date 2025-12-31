@@ -5260,6 +5260,8 @@ dependencies = [
  "image",
  "notify 8.2.0",
  "notify-debouncer-mini",
+ "open",
+ "rfd",
  "serde",
  "serde_json",
  "thiserror 2.0.17",
