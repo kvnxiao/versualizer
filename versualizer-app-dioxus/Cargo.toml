@@ -24,7 +24,9 @@ versualizer-spotify-api = { path = "../versualizer-spotify-api" }
 dioxus = { version = "0.7", features = ["desktop"] }
 
 # Dioxus animations
-dioxus-motion = { version = "0.3", default-features = false, features = ["desktop"] }
+dioxus-motion = { version = "0.3", default-features = false, features = [
+  "desktop",
+] }
 
 # Async runtime
 tokio = { workspace = true }
@@ -53,7 +55,10 @@ thiserror = { workspace = true }
 image = { version = "0.25", default-features = false, features = ["png"] }
 
 # Native OS dialogs for configuration warnings
-rfd = { version = "0.15", default-features = false, features = ["xdg-portal", "common-controls-v6"] }
+rfd = { version = "0.15", default-features = false, features = [
+  "xdg-portal",
+  "common-controls-v6",
+] }
 
 # Opening files in default application
 open = { workspace = true }
