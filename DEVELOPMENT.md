@@ -25,7 +25,7 @@ versualizer/
 
 ## Prerequisites
 
-- [Rust 1.85+](https://rustup.rs/) (edition 2024)
+- [Rust 1.85+](https://rustup.rs/) (2024 edition)
 - [just](https://github.com/casey/just) - command runner
 - [dioxus-cli](https://dioxuslabs.com/learn/0.7/getting_started/#install-the-dioxus-cli) - for bundling
 
@@ -50,6 +50,15 @@ User config stored at platform-specific config directory:
 - Linux: `~/.config/versualizer/config.toml`
 
 ## Conventions
+
+### Code Quality
+
+All code changes must pass:
+
+```bash
+cargo clippy --workspace --all-targets --all-features
+cargo fmt --check
+```
 
 ### Async Runtime
 
