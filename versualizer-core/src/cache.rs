@@ -295,7 +295,12 @@ impl LyricsCache {
     ) -> Result<i64> {
         info!(
             "Storing lyrics in cache: {} - {} (lyrics_provider: {}, lyrics_provider_id: {}, provider: {}:{})",
-            metadata.artist, metadata.track, lyrics_provider, lyrics_provider_id, provider, provider_track_id
+            metadata.artist,
+            metadata.track,
+            lyrics_provider,
+            lyrics_provider_id,
+            provider,
+            provider_track_id
         );
         let provider = provider.to_string();
         let provider_track_id = provider_track_id.to_string();

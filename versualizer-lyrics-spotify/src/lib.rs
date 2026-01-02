@@ -13,7 +13,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
-use reqwest_retry::{policies::ExponentialBackoff, RetryTransientMiddleware};
+use reqwest_retry::{RetryTransientMiddleware, policies::ExponentialBackoff};
 use serde::Deserialize;
 use tracing::{info, warn};
 use versualizer_core::{
@@ -31,8 +31,7 @@ const DEFAULT_TIMEOUT_SECS: u64 = 10;
 /// Default number of retry attempts
 const DEFAULT_MAX_RETRIES: u32 = 3;
 /// User agent for requests
-const USER_AGENT: &str =
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 
 /// Spotify unofficial lyrics provider using TOTP-based authentication.
 ///

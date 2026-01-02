@@ -13,8 +13,8 @@ use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
 
 use crate::auth::{
-    fetch_secret_key, CachedAccessToken, CachedSecret, ServerTimeResponse, SpotifyAuthError,
-    TokenResponse,
+    CachedAccessToken, CachedSecret, ServerTimeResponse, SpotifyAuthError, TokenResponse,
+    fetch_secret_key,
 };
 use crate::totp::generate_totp;
 
@@ -31,8 +31,7 @@ const SECRET_CACHE_MAX_AGE: Duration = Duration::from_secs(24 * 60 * 60);
 const TOKEN_REFRESH_BUFFER_SECS: u64 = 60;
 
 /// User agent for requests
-const USER_AGENT: &str =
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 
 /// Manages Spotify access token lifecycle with TOTP authentication.
 ///

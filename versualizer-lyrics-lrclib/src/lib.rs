@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
-use reqwest_retry::{policies::ExponentialBackoff, RetryTransientMiddleware};
+use reqwest_retry::{RetryTransientMiddleware, policies::ExponentialBackoff};
 use serde::Deserialize;
 use std::time::Duration;
 use tracing::{debug, info, warn};
@@ -182,7 +182,9 @@ impl LrclibProvider {
         };
 
         if filtered.is_empty() {
-            info!("LRCLIB search by track name: no results within duration tolerance, trying full search");
+            info!(
+                "LRCLIB search by track name: no results within duration tolerance, trying full search"
+            );
             return self.search_fallback(query).await;
         }
 
@@ -276,36 +278,36 @@ impl LrclibProvider {
         }
 
         // Prefer synced lyrics
-        if let Some(synced) = result.synced_lyrics {
-            if !synced.trim().is_empty() {
-                match LrcFile::parse(&synced) {
-                    Ok(lrc) => {
-                        debug!(
-                            "Got synced lyrics with {} lines (lrclib id: {})",
-                            lrc.lines.len(),
-                            result.id
-                        );
-                        return FetchedLyrics {
-                            result: LyricsResult::Synced(lrc),
-                            provider_id,
-                        };
-                    }
-                    Err(e) => {
-                        warn!("Failed to parse synced lyrics: {}", e);
-                    }
+        if let Some(synced) = result.synced_lyrics
+            && !synced.trim().is_empty()
+        {
+            match LrcFile::parse(&synced) {
+                Ok(lrc) => {
+                    debug!(
+                        "Got synced lyrics with {} lines (lrclib id: {})",
+                        lrc.lines.len(),
+                        result.id
+                    );
+                    return FetchedLyrics {
+                        result: LyricsResult::Synced(lrc),
+                        provider_id,
+                    };
+                }
+                Err(e) => {
+                    warn!("Failed to parse synced lyrics: {}", e);
                 }
             }
         }
 
         // Fall back to plain lyrics
-        if let Some(plain) = result.plain_lyrics {
-            if !plain.trim().is_empty() {
-                debug!("Got plain lyrics (lrclib id: {})", result.id);
-                return FetchedLyrics {
-                    result: LyricsResult::Unsynced(plain),
-                    provider_id,
-                };
-            }
+        if let Some(plain) = result.plain_lyrics
+            && !plain.trim().is_empty()
+        {
+            debug!("Got plain lyrics (lrclib id: {})", result.id);
+            return FetchedLyrics {
+                result: LyricsResult::Unsynced(plain),
+                provider_id,
+            };
         }
 
         FetchedLyrics {

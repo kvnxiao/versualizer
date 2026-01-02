@@ -47,11 +47,11 @@ impl WindowState {
         let path = versualizer_core::window_state_path();
 
         // Ensure parent directory exists
-        if let Some(parent) = path.parent() {
-            if let Err(e) = fs::create_dir_all(parent) {
-                warn!("Failed to create window state directory: {}", e);
-                return;
-            }
+        if let Some(parent) = path.parent()
+            && let Err(e) = fs::create_dir_all(parent)
+        {
+            warn!("Failed to create window state directory: {}", e);
+            return;
         }
 
         match serde_json::to_string_pretty(self) {

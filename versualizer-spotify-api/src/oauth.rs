@@ -1,6 +1,6 @@
 use crate::error::SpotifyError;
-use axum::{extract::Query, response::Html, routing::get, Router};
-use rspotify::{prelude::*, scopes, AuthCodeSpotify, Credentials, OAuth, Token};
+use axum::{Router, extract::Query, response::Html, routing::get};
+use rspotify::{AuthCodeSpotify, Credentials, OAuth, Token, prelude::*, scopes};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::net::SocketAddr;

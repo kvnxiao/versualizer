@@ -1,17 +1,17 @@
 [workspace]
 resolver = "2"
 members = [
-    "versualizer-core",
-    "versualizer-lyrics-lrclib",
-    "versualizer-lyrics-spotify",
-    "versualizer-spotify-api",
-    "versualizer-app-dioxus",
+  "versualizer-core",
+  "versualizer-lyrics-lrclib",
+  "versualizer-lyrics-spotify",
+  "versualizer-spotify-api",
+  "versualizer-app-dioxus",
 ]
 
 [workspace.package]
 version = "0.1.0"
-edition = "2021"
-rust-version = "1.75"
+edition = "2024"
+rust-version = "1.85"
 license = "MIT"
 authors = ["Kevin Xiao"]
 description = "Real-time synchronized lyrics visualizer for Spotify"

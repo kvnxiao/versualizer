@@ -140,26 +140,26 @@ impl LrcLine {
         }
 
         // If we have word timing, calculate based on that
-        if let Some(ref words) = self.words {
-            if let Some(last_word) = words.last() {
-                let end_time = last_word
-                    .end_time
-                    .or(next_line_start)
-                    .unwrap_or(self.start_time + Duration::from_secs(5));
+        if let Some(ref words) = self.words
+            && let Some(last_word) = words.last()
+        {
+            let end_time = last_word
+                .end_time
+                .or(next_line_start)
+                .unwrap_or(self.start_time + Duration::from_secs(5));
 
-                if position >= end_time {
-                    return 1.0;
-                }
-
-                let total_duration = end_time.saturating_sub(self.start_time);
-                let elapsed = position.saturating_sub(self.start_time);
-
-                if total_duration.is_zero() {
-                    return 1.0;
-                }
-
-                return (elapsed.as_secs_f32() / total_duration.as_secs_f32()).clamp(0.0, 1.0);
+            if position >= end_time {
+                return 1.0;
             }
+
+            let total_duration = end_time.saturating_sub(self.start_time);
+            let elapsed = position.saturating_sub(self.start_time);
+
+            if total_duration.is_zero() {
+                return 1.0;
+            }
+
+            return (elapsed.as_secs_f32() / total_duration.as_secs_f32()).clamp(0.0, 1.0);
         }
 
         // Estimate based on next line start or default duration
@@ -419,11 +419,7 @@ fn parse_enhanced_words(text: &str) -> Option<Vec<LrcWord>> {
         }
     }
 
-    if words.is_empty() {
-        None
-    } else {
-        Some(words)
-    }
+    if words.is_empty() { None } else { Some(words) }
 }
 
 /// Apply a millisecond offset to a duration (can be negative)
