@@ -17,7 +17,7 @@ cargo fmt --check
 
 Versualizer is a desktop application for real-time synchronized lyrics visualization, supporting Spotify playback detection.
 
-See [@DEVELOPMENT.md](DEVELOPMENT.md) for architecture, conventions, and development setup. Also refer to the [@justfile](justfile) for a list of available project commands, and the workspace [@Cargo.toml](Cargo.toml) for a see how the project is configured and what dependencies are being used.
+See [@DEVELOPMENT.md](DEVELOPMENT.md) for architecture, conventions, and development setup. Also refer to the [@justfile](justfile) for a list of available project commands, and the workspace [@Cargo.toml](Cargo.toml) to see how the project is configured and what dependencies are being used.
 
 ### Rust Guidelines
 
