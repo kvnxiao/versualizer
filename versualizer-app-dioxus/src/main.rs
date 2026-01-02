@@ -21,7 +21,7 @@ use std::path::Path;
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info};
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 use versualizer_core::config::LyricsProviderType;
 use versualizer_core::{
     CoreError, LyricsCache, LyricsFetcher, LyricsProvider, MusicSource, SyncEngine, SyncEvent,
@@ -30,7 +30,7 @@ use versualizer_core::{
 use versualizer_lyrics_lrclib::LrclibProvider;
 use versualizer_lyrics_spotify::SpotifyLyricsProvider;
 use versualizer_spotify_api::{
-    SpotifyOAuth, SpotifyPoller, SpotifyProviderConfig, SPOTIFY_CONFIG_TEMPLATE,
+    SPOTIFY_CONFIG_TEMPLATE, SpotifyOAuth, SpotifyPoller, SpotifyProviderConfig,
 };
 
 const APP_NAME: &str = "Versualizer";
@@ -329,10 +329,10 @@ fn show_new_config_dialog(config_path: &Path) {
         ))
         .show();
 
-    if matches!(result, MessageDialogResult::Custom(ref s) if s == "Open Config") {
-        if let Err(e) = open::that(config_path) {
-            error!("Failed to open config file: {e}");
-        }
+    if matches!(result, MessageDialogResult::Custom(ref s) if s == "Open Config")
+        && let Err(e) = open::that(config_path)
+    {
+        error!("Failed to open config file: {e}");
     }
 }
 

@@ -190,10 +190,10 @@ impl MusicSourceProvider for SpotifyPoller {
                             tokio::time::sleep(backoff).await;
 
                             // Try to refresh token on auth errors
-                            if matches!(e, SpotifyError::Api(_)) {
-                                if let Err(refresh_err) = self.oauth.refresh_token().await {
-                                    error!("Token refresh failed: {}", refresh_err);
-                                }
+                            if matches!(e, SpotifyError::Api(_))
+                                && let Err(refresh_err) = self.oauth.refresh_token().await
+                            {
+                                error!("Token refresh failed: {}", refresh_err);
                             }
                         }
                     }

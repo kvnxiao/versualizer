@@ -12,16 +12,16 @@ pub mod time;
 
 pub use cache::LyricsCache;
 pub use config::{
-    build_config_template, AnimationConfig, LayoutConfig, LyricsConfig, LyricsProviderType,
-    MusicConfig, ProvidersConfig, UiConfig, VersualizerConfig,
+    AnimationConfig, LayoutConfig, LyricsConfig, LyricsProviderType, MusicConfig, ProvidersConfig,
+    UiConfig, VersualizerConfig, build_config_template,
 };
 
 pub use error::CoreError;
 pub use fetcher::LyricsFetcher;
 pub use lrc::{LrcFile, LrcLine, LrcMetadata, LrcWord};
 pub use paths::{
-    config_dir, theme_path, window_state_path, CONFIG_DIR_NAME, CONFIG_FILE_NAME,
-    LYRICS_CACHE_DB_FILE_NAME, THEME_FILE_NAME, WINDOW_STATE_FILE_NAME,
+    CONFIG_DIR_NAME, CONFIG_FILE_NAME, LYRICS_CACHE_DB_FILE_NAME, THEME_FILE_NAME,
+    WINDOW_STATE_FILE_NAME, config_dir, theme_path, window_state_path,
 };
 pub use playback::{PlaybackState, TrackInfo};
 pub use provider::{FetchedLyrics, LyricsProvider, LyricsQuery, LyricsResult};

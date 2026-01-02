@@ -61,14 +61,14 @@ impl LyricsFetcher {
         let mut rx = self.sync_engine.subscribe();
 
         // Check if there's already a track loaded on startup
-        if let Some(track) = self.sync_engine.current_track().await {
-            if self.sync_engine.lyrics().await.is_none() {
-                info!(
-                    "Found existing track on startup: {} - {}, fetching lyrics",
-                    track.artist, track.name
-                );
-                self.fetch_lyrics_for_track(&track).await;
-            }
+        if let Some(track) = self.sync_engine.current_track().await
+            && self.sync_engine.lyrics().await.is_none()
+        {
+            info!(
+                "Found existing track on startup: {} - {}, fetching lyrics",
+                track.artist, track.name
+            );
+            self.fetch_lyrics_for_track(&track).await;
         }
 
         loop {

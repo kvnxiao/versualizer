@@ -3,7 +3,7 @@
 //! This module provides a hook that automatically resizes the OS window
 //! when CSS changes affect the content dimensions.
 
-use dioxus::desktop::{use_window, LogicalSize};
+use dioxus::desktop::{LogicalSize, use_window};
 use dioxus::prelude::*;
 use serde::Deserialize;
 use tracing::{debug, warn};

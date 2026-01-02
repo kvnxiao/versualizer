@@ -6,7 +6,7 @@
 //! 3. Watching the theme file for changes and updating a Signal to trigger re-render
 
 use dioxus::prelude::*;
-use notify_debouncer_mini::{new_debouncer, notify::RecursiveMode, DebounceEventResult};
+use notify_debouncer_mini::{DebounceEventResult, new_debouncer, notify::RecursiveMode};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;

@@ -2,7 +2,7 @@ use crate::lrc::LrcFile;
 use crate::playback::{PlaybackState, TrackInfo};
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::{broadcast, RwLock};
+use tokio::sync::{RwLock, broadcast};
 
 /// Events emitted by the sync engine
 #[derive(Debug, Clone)]

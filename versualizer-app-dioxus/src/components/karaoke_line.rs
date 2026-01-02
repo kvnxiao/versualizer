@@ -1,4 +1,4 @@
-use crate::state::{KaraokeState, PrecomputedLyrics, INTRO_LINE_INDEX};
+use crate::state::{INTRO_LINE_INDEX, KaraokeState, PrecomputedLyrics};
 use dioxus::prelude::*;
 use dioxus_motion::prelude::*;
 use versualizer_core::UiConfig;
@@ -76,11 +76,7 @@ pub fn KaraokeLine() -> Element {
     // When current_index >= 0, we need to account for buffer lines before.
     let current_visible_idx: Option<usize> = if current_index < 0 {
         // In intro: if there's an intro line, it's at visible[0]
-        if has_intro {
-            Some(0)
-        } else {
-            None
-        }
+        if has_intro { Some(0) } else { None }
     } else {
         // On an actual line - calculate position in visible array
         // current_index >= 0 is guaranteed by the outer if condition

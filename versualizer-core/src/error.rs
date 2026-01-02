@@ -9,7 +9,9 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum CoreError {
     // Configuration errors
-    #[error("Config file not found at {path}. A template has been created - please edit it with your Spotify credentials and restart.")]
+    #[error(
+        "Config file not found at {path}. A template has been created - please edit it with your Spotify credentials and restart."
+    )]
     ConfigNotFound { path: PathBuf },
 
     #[error("Invalid config: {message}")]
